@@ -54,6 +54,7 @@ class PBInput():
             try:
                 events = list(device.read())
                 for event in events:
+                    print(event)
                     if event.type==evdev.ecodes.EV_KEY:
                         yield event
             except IOError:

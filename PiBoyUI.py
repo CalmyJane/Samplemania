@@ -74,6 +74,52 @@ class Background:
             #pygame.draw.line ( screen, ( 0, 250-i/25, 0 ), ( i, self.height ), ( self.width, self.height - i ), 1 )
         screen.blit(self.image, self.image.get_rect())
 
+class Dpad():
+    def __init__(self,pos, *args, **kwargs):
+        self.pos = pos
+        self.bg_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_bg.png')
+        self.up_on_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_up_on.png')
+        self.up_off_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_up_off.png')
+        self.down_on_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_down_on.png')
+        self.down_off_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_down_off.png')
+        self.left_on_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_left_on.png')
+        self.left_off_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_left_off.png')
+        self.right_on_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_right_on.png')
+        self.right_off_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_right_off.png')
+        DEFAULT_IMAGE_SIZE = (80,80)
+        self.bg_img = pygame.transform.scale(self.bg_img, DEFAULT_IMAGE_SIZE)
+        self.up_on_img = pygame.transform.scale(self.up_on_img, DEFAULT_IMAGE_SIZE)
+        self.up_off_img = pygame.transform.scale(self.up_off_img, DEFAULT_IMAGE_SIZE)
+        self.down_on_img = pygame.transform.scale(self.down_on_img, DEFAULT_IMAGE_SIZE)
+        self.down_off_img = pygame.transform.scale(self.down_off_img, DEFAULT_IMAGE_SIZE)
+        self.left_on_img = pygame.transform.scale(self.left_on_img, DEFAULT_IMAGE_SIZE)
+        self.left_off_img = pygame.transform.scale(self.left_off_img, DEFAULT_IMAGE_SIZE)
+        self.right_on_img = pygame.transform.scale(self.right_on_img, DEFAULT_IMAGE_SIZE)
+        self.right_off_img = pygame.transform.scale(self.right_off_img, DEFAULT_IMAGE_SIZE)
+        self.up = False
+        self.down = False
+        self.left = False
+        self.right = False
+        self.rect = self.bg_img.get_rect().move(self.pos)
+
+    def set_values(self, up, down, left, right):
+        self.up = up
+        self.down = down
+        self.left = left
+        self.right = right
+
+    def draw(self, screen):
+        up = self.up_on_img if self.up else self.up_off_img
+        down = self.down_on_img if self.down else self.down_off_img
+        left = self.left_on_img if self.left else self.left_off_img
+        right = self.right_on_img if self.right else self.right_off_img
+        screen.blit(self.bg_img, self.rect)
+        screen.blit(up, self.rect)
+        screen.blit(down, self.rect)
+        screen.blit(left, self.rect)
+        screen.blit(right, self.rect)
+
+
 class Text:
     """Create a text object."""
     def __init__(self, text, pos, fontsize, color, bgcolor, **options):

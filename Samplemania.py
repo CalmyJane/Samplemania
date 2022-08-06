@@ -67,6 +67,7 @@ class App:
         App.running = True
         self.bgcounter = 0
         self.input = PBInput()
+        self.dpad = Dpad((77,220))
         self.input.set_callback('A', self.on_a)
         self.input.set_callback('B', self.on_b)
         self.input.set_callback('C', self.on_c)
@@ -130,8 +131,11 @@ class App:
             #stop if start+select is pressed
             if self.input.start and self.input.select:
                 break
+
+            self.dpad.set_values(self.input.up, self.input.down, self.input.left, self.input.right)
             #draw GUI
             App.bg.draw(App.screen)
+            self.dpad.draw(App.screen)
             self.presetview.draw(App.screen)
             self.buttonrow.draw(App.screen)
             self.presetlabel.draw(App.screen)
