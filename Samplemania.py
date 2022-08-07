@@ -91,6 +91,19 @@ class App:
         """Print Console Header"""
         print("<------------------------------------->")
         print("")
+        print("                               ____________________ ")
+        print("                              |  ________________  |")
+        print("                              | |   ____   ____  | |")
+        print("                              | |  |    | |    | | |")
+        print("                              | |  |____| |____| | |")
+        print("                              | |  __            | |")
+        print("                              | | |  |_________  | |")
+        print("                              | | |____________| | |")
+        print("                              | |________________| |")
+        print("                              |____________________|")
+        print("")
+        print("<------------------------------------->")
+        print("")
         print(" ______  _______  __      __   __  __   __        __  _______  __    _  _______ ")
         print("|      ||   _   ||  |    |  |_|  ||  | |  |      |  ||   _   ||  |  | ||       |")
         print("|    __||  | |  ||  |    |       ||  |_|  |      |  ||  | |  ||   |_| ||    ___|")
@@ -120,17 +133,12 @@ class App:
         self.presetlabel = Text("Preset1", (100, 150), 60, Color('white'), None)
         self.set_current_preset(0)
 
-        #Variables to store key states
-        selectpressed = False
-        startpressed = False
-        offset = 0
-        done = False
-        while not done:
+        while App.running:
             #udpate input (poll buttons)
             self.input.update()
             #stop if start+select is pressed
             if self.input.start and self.input.select:
-                break
+                App.running = False
 
             self.dpad.set_values(self.input.up, self.input.down, self.input.left, self.input.right)
             #draw GUI
