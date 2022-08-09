@@ -11,6 +11,8 @@ from PiBoyInput import PBInput
 from pygame import midi
 import sounddevice as sd
 import array
+from collections import deque
+from scipy.signal import butter, lfilter, freqz
 
 class Scale:
     def __init__(self, notes = (0, 2, 4, 5, 7, 9), root="C", octave = 0):
@@ -70,6 +72,9 @@ class PolySynth:
         self.crazy = False
         self.oscillators = (self.get_sin_oscillator, self.get_square_oscillator, self.get_saw_oscillator)
         self._init_stream(1)
+        self.generating = False
+        self.queue = deque()
+        self.cutoff = 3000
         
     def _init_stream(self, nchannels):
         #Initialize the Stream object
@@ -78,29 +83,52 @@ class PolySynth:
             channels=nchannels,
             format=pyaudio.paInt16,
             output=True,
-            #stream_callback=self.stream_cb,
+            stream_callback=self.stream_cb,
             frames_per_buffer=self.num_samples
         )
         
+    def butter_lowpass(self, cutoff, fs, order=5):
+        nyq = 0.5 * fs
+        normal_cutoff = cutoff / nyq
+        b, a = butter(order, normal_cutoff, btype='low', analog=False)
+        return b, a
+
+    def butter_lowpass_filter(self, data, cutoff, fs, order=5):
+        b, a = self.butter_lowpass(cutoff, fs, order=order)
+        y = lfilter(b, a, data)
+        return y
+
     def _get_samples(self, notes_dict):
         # Return samples in int16 format
         samples = []
-        for _ in range(self.num_samples):
-            samples.append(
-                [next(osc[0]) for _, osc in notes_dict.items()]
-            )
-        samples = np.array(samples).sum(axis=1) / len(self.notes_dict) * self.amp_scale
-        samples = np.int16(samples.clip(-self.max_amp, self.max_amp) * 127)
-        return samples.reshape(self.num_samples, -1)
+        if self.notes_dict:
+            for _ in range(self.num_samples):
+                samples.append(
+                    [next(osc[0]) for _, osc in self.notes_dict.items()]
+                )
+            samples = np.array(samples).sum(axis=1) / len(self.notes_dict) * self.amp_scale
+            samples = np.int16(samples.clip(-self.max_amp, self.max_amp) * 127)
+            samples = samples.reshape(self.num_samples, -1)
+            #samples = self.butter_lowpass_filter(samples, self.cutoff, self.sample_rate) #filter all oscillators
+        else:
+            samples = np.zeros(self.num_samples)
+        return samples
 
-    #def stream_cb(self, in_data, frame_count, time_info, status):
-    #    if self.notes_dict:
-    #        # Play the notes
-    #        samples = self._get_samples(self.notes_dict)
-    #        return(samples.tobytes(), pyaudio.paContinue)
-    #    else:
-    #        retdata = array.array("i", [0 for i in range(frame_count)])
-    #        return (retdata, pyaudio.paContinue)
+    def stream_cb(self, in_data, frame_count, time_info, status):
+        for i in range(len(self.queue)):
+            (name, value, freq) = self.queue.popleft()
+            if value:
+                self.notes_dict[name] = [self.oscillators[self.osc](freq=freq, amp=100, sample_rate=self.sample_rate), False]
+            else:
+                if self.notes_dict.get(name):
+                    del self.notes_dict[name]  
+        if self.notes_dict:
+            # Play the notes
+            samples = self._get_samples(self.notes_dict)
+            return(samples.tobytes(), pyaudio.paContinue)
+        else:
+            retdata = array.array("i", [0 for i in range(frame_count)])
+            return (retdata, pyaudio.paContinue)
 
     def get_sin_oscillator(self, freq=55, amp=1, sample_rate=22050):
         increment = (2 * math.pi * freq) / sample_rate
@@ -118,25 +146,18 @@ class PolySynth:
         self.osc = index
 
     def update(self):
-        pass
-        if self.notes_dict:
-            # Play the notes
-            samples = self._get_samples(self.notes_dict)
-            self.stream.write(samples.tobytes())
         if self.crazy:
-            self.notes_dict["Crazy"] = [self.oscillators[self.osc](freq=self.freq, amp=100, sample_rate=self.sample_rate),False]
+            self.set_note("Crazy", True, self.freq)
             self.freq = self.freq * 1.01 % 1000000
         else:
             self.freq = 70
             if self.notes_dict.get("Crazy"):
-                del self.notes_dict["Crazy"]
+                self.set_note("Crazy", False, self.freq)
+        time.sleep(0.01)
 
     def set_note(self, name, value, freq):
-        if value:
-            self.notes_dict[name] = [self.oscillators[self.osc](freq=freq, amp=100, sample_rate=self.sample_rate), False]
-        else:
-            if self.notes_dict.get(name):
-                del self.notes_dict[name]  
+        #Add note to queue, will be added to notes_dict in audiostream callback function
+        self.queue.append((name,value,freq))
 
     def switch_oscillator(self, up):
         self.osc = (self.osc + 1) % len(self.oscillators) if up else (self.osc - 1) % len(self.oscillators)
@@ -165,6 +186,13 @@ class App:
         self.synth.set_oscillator(0)
         self.print_console_header()
         self.scale = Scale(notes=(0, 2, 3, 5, 7, 8), root="A", octave=-1)
+        self.input_id = 3 #input id of midi device
+        try:
+            pygame.midi.init()
+            self.midiinput = pygame.midi.Input(self.input_id)
+        except:
+            self.midiinput = None
+            print("midi device not found")
 
     def run(self):
         #Main Loop
@@ -175,6 +203,24 @@ class App:
             #stop if start+select is pressed
             if self.input.start and self.input.select:
                 App.running = False
+
+            self.update_midi()
+
+    def update_midi(self):
+        if self.midiinput:
+            if self.midiinput.poll():
+                midi_events = self.midiinput.read(1)
+                for event in midi_events:
+                    (status, note, vel, _), _ = event
+                    note = note -48
+                    if status == 144:
+                        if vel == 0:
+                            #note released
+                            print("release: " + str(note))
+                            self.synth.set_note(str(note), False, 0)
+                        else:
+                            print("pressed: " + str(note))
+                            self.synth.set_note(str(note), True, self.scale.get_freq(note))
 
     #Input Callbacks
     def on_any(keyevent):
@@ -254,5 +300,6 @@ class App:
         print("<------------------------------------------------------------------------------>")
         print("                            Copyright Calmy Jane 2022")
         print("<------------------------------------------------------------------------------>")
+
 # RUN GAME
 App().run()
