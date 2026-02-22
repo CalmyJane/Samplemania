@@ -26,14 +26,14 @@ class Sample():
             try:
                 self.sound = mixer.Sound(self.path)
             except Exception as e:
-                print(f"Error loading {self.path}: {e}")
+                print("Error loading {0}: {1}".format(self.path, e))
                 self.failed = True
 
     def play(self, channel):
         if self.sound:
             channel.play(self.sound)
         else:
-            # If it hasn't finished loading yet, load it now (fallback)
+            # Fallback for thread-safety: load if not ready
             self.load()
             if self.sound:
                 channel.play(self.sound)
@@ -86,16 +86,22 @@ class Preset:
 class App:
     def __init__(self):
         """Initialize pygame and the application."""
-        # Use 44100Hz and a 512 buffer. 
-        # This is the gold standard for Pi audio stability vs latency.
+        # 1. Sound pre-init first
         pygame.mixer.pre_init(44100, -16, 2, 512)
+        
+        # 2. Full pygame init (Initializes Video, Audio, and Font)
         pygame.init()
+        
+        # 3. SET DISPLAY MODE BEFORE TOUCHING MOUSE
+        # This is the critical step for sudo/python3 compatibility
+        App.screen = pygame.display.set_mode((640, 480))
+        
+        # 4. Now hide the mouse
         pygame.mouse.set_visible(False)
         
         # Create 6 dedicated channels
         self.channels = [mixer.Channel(i) for i in range(6)]
         
-        App.screen = pygame.display.set_mode((640, 480))
         App.bg = Background()
         App.running = True
         self.bgcounter = 0
@@ -119,7 +125,7 @@ class App:
         self.input.set_callback('select', self.on_select)
         self.input.set_callback('start', self.on_start)
 
-        self.fadetime = 0 # Set to 0 for instant stop, or very low (10ms) for beat matching
+        self.fadetime = 0
 
     def update(self):
         # Update is called from PBInput whenever an event happens
