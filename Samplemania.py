@@ -12,53 +12,53 @@ from PiBoyInput import PBInput
 import time
 from pygame.mixer import Sound
 
+import threading
+
 class Sample():
     def __init__(self, path):
         self.path = path
         self.sound = None
         self.failed = False
-        self.load() # Preload immediately
 
     def load(self):
-        """Preload the sound into RAM."""
+        """Synchronous load for a single file."""
         if self.sound is None and not self.failed:
             try:
                 self.sound = mixer.Sound(self.path)
             except Exception as e:
-                print("Error loading {0}: {1}".format(self.path, e))
+                print(f"Error loading {self.path}: {e}")
                 self.failed = True
 
     def play(self, channel):
         if self.sound:
             channel.play(self.sound)
+        else:
+            # If it hasn't finished loading yet, load it now (fallback)
+            self.load()
+            if self.sound:
+                channel.play(self.sound)
 
     def get_name(self):
         return (os.path.splitext(os.path.basename(self.path)))[0]
 
 class Preset:
-    # Presets are folders in the sample-directory that contain multiple samples
     def __init__(self, path):
         self.name = os.path.basename(path)
         self.samples = []
         self.page = 0
         
         if os.path.isdir(path):
-            # Filter for audio files and sort them
-            all_files = os.listdir(path)
-            paths = []
-            for f in all_files:
-                if f.lower().endswith(('.wav', '.ogg')):
-                    paths.append(f)
-            paths.sort()
-            
-            for filename in paths:
+            all_files = [f for f in os.listdir(path) if f.lower().endswith(('.wav', '.ogg'))]
+            all_files.sort()
+            for filename in all_files:
                 self.samples.append(Sample(os.path.join(path, filename)))
         
-        # Calculate pages
-        if len(self.samples) > 0:
-            self.numpages = int(math.ceil(float(len(self.samples)) / 6))
-        else:
-            self.numpages = 1
+        self.numpages = max(1, int(math.ceil(float(len(self.samples)) / 6)))
+
+    def load_all(self):
+        """Triggers the load for every sample in this preset."""
+        for s in self.samples:
+            s.load()
 
     def change_page(self, up):
         if up:
@@ -67,10 +67,9 @@ class Preset:
             self.page = (self.page + 1) % self.numpages
 
     def play_sample(self, index, channel):
-            sample_idx = index + self.page * 6
-            if sample_idx < len(self.samples):
-                # Pass the channel assigned to this button index
-                self.samples[sample_idx].play(channel)
+        sample_idx = index + self.page * 6
+        if sample_idx < len(self.samples):
+            self.samples[sample_idx].play(channel)
 
     def get_names(self):
         names = []
@@ -192,8 +191,15 @@ class App:
         pygame.quit()
 
     def load_preset(self, path):
+        # Create the preset object (this is fast, it just lists files)
         self.activepreset = Preset(path)
         self.update_presetview()
+        
+        # Start a background thread to load the actual audio data into RAM
+        # This prevents the UI from freezing during SD card read
+        load_thread = threading.Thread(target=self.activepreset.load_all)
+        load_thread.daemon = True # Thread closes if app closes
+        load_thread.start()
 
     def update_presetview(self):
         self.presetview.set_strings(self.activepreset.get_names())
