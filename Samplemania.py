@@ -17,20 +17,19 @@ class Sample():
         self.path = path
         self.sound = None
         self.failed = False
+        self.load() # Preload immediately
 
-    def play(self, channel):
-        # Lazy loading
+    def load(self):
+        """Preload the sound into RAM."""
         if self.sound is None and not self.failed:
             try:
                 self.sound = mixer.Sound(self.path)
             except Exception as e:
                 print("Error loading {0}: {1}".format(self.path, e))
                 self.failed = True
-                return
-        
+
+    def play(self, channel):
         if self.sound:
-            # Playing on a specific channel will automatically stop 
-            # whatever was playing on that channel previously.
             channel.play(self.sound)
 
     def get_name(self):
@@ -88,13 +87,13 @@ class Preset:
 class App:
     def __init__(self):
         """Initialize pygame and the application."""
+        # Use 44100Hz and a 512 buffer. 
+        # This is the gold standard for Pi audio stability vs latency.
+        pygame.mixer.pre_init(44100, -16, 2, 512)
         pygame.init()
         pygame.mouse.set_visible(False)
-        # Using a slightly larger buffer (512) helps prevent stuttering during lazy loading
-        mixer.pre_init(22050, -16, 2, 512)
-        mixer.init()
         
-        # Create 6 dedicated channels for the 6 button slots
+        # Create 6 dedicated channels
         self.channels = [mixer.Channel(i) for i in range(6)]
         
         App.screen = pygame.display.set_mode((640, 480))
@@ -104,7 +103,7 @@ class App:
         self.input = PBInput()
         self.dpad = Dpad((77, 220))
         
-        # Set callbacks for hardware inputs
+        # Set callbacks
         self.input.set_callback('A', self.on_a)
         self.input.set_callback('B', self.on_b)
         self.input.set_callback('C', self.on_c)
@@ -121,11 +120,10 @@ class App:
         self.input.set_callback('select', self.on_select)
         self.input.set_callback('start', self.on_start)
 
-        self.fadetime = 50 # time to fadeout sounds in ms
+        self.fadetime = 0 # Set to 0 for instant stop, or very low (10ms) for beat matching
 
     def update(self):
         # Update is called from PBInput whenever an event happens
-        # Stop if start + select is pressed
         if self.input.start and self.input.select:
             self.input.stop()
 
@@ -137,7 +135,9 @@ class App:
         self.presetview.draw(App.screen)
         self.buttonrow.draw(App.screen)
         self.presetlabel.draw(App.screen)
-        pygame.display.update()
+        
+        # Only update the display if necessary or at a capped framerate
+        pygame.display.flip()
 
     def run(self):
         """Print Console Header"""
@@ -276,11 +276,10 @@ class App:
         print("right shoulder")
 
     def on_red_buttons(self, pressed):
-        # Stop previous samples only if a new button is pressed
-        if pressed and not self.input.red_button:
-            # Note: This fades out ALL channels. If you want a specific behavior, 
-            # you could loop through self.channels and call stop() instead.
-            mixer.fadeout(self.fadetime)
+        if pressed:
+            # Instant stop across all channels for beat-tight performance
+            for chan in self.channels:
+                chan.stop()
 
 # RUN GAME
 App().run()
