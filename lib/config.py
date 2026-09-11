@@ -12,6 +12,10 @@ LOG_PATH = os.path.join(APP_DIR, "samplemania.log")
 WATCHDOG_SECONDS = 8.0
 IDLE_WAIT = 0.5
 
+# START: released before this it opens the menu, held longer it switches to
+# the play screen until it is released again.
+MENU_HOLD_SECONDS = 0.35
+
 # Runtime files. /dev/shm is RAM: no SD card writes, gone after a reboot.
 RUN_DIR = "/dev/shm" if os.path.isdir("/dev/shm") else APP_DIR
 # Current preset and page, so an app restarted by the launcher comes back there

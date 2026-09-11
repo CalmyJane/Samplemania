@@ -83,5 +83,10 @@ with the first entry (Playback) picked; A or START selects, B closes, so START, 
 always returns to playback. To add a feature: write a new `Mode`, create it in `App.run()`
 in `lib/app.py` and add a `(label, mode)` entry to the menu list there. An entry can also
 be `(label, function)` for an action; use `menu.ask(message, on_yes)` for a yes/no
-confirmation (A = yes, B = no, START never confirms). Keep START free in new modes (it
-opens the menu) and START + SELECT is always quit.
+confirmation (A = yes, B = no, START never confirms).
+
+START belongs to `App.on_start_button`, not to the modes: a tap opens the menu on
+release, holding it past `config.MENU_HOLD_SECONDS` switches to the play screen until
+it is released, then returns to the screen it started from (`App.peek_mode`). A new mode
+must therefore not define `on_start`; if it may not be left right now (recording),
+override `start_allowed()` and set a status message there. START + SELECT is always quit.

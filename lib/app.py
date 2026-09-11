@@ -62,6 +62,8 @@ class App:
         self.menu = None
         self.activepreset = None
         self.last_sample = None     # last sample played, pitch mode uses it
+        self.start_held_at = None   # when START went down, None while it is up
+        self.peek_mode = None       # mode to return to after peeking at playback
         self.loader = Loader()
         self.watchdog = stability.Watchdog(config.WATCHDOG_SECONDS)
 
@@ -71,6 +73,11 @@ class App:
             # A bug in a handler must never take the app down mid-performance:
             # log it and carry on with the next button press.
             try:
+                # START belongs to the app, not to the screens - except while
+                # the menu is open, where it picks the highlighted entry.
+                if name == 'start' and not (self.menu is not None and self.menu.is_open):
+                    self.on_start_button(pressed)
+                    return
                 # While the menu is open it takes the presses. Releases still go
                 # to the mode, so a button held when the menu opened doesn't stay
                 # lit on the play screen.
@@ -81,6 +88,42 @@ class App:
             except Exception:
                 log.exception("error in %s", handler)
         return callback
+
+    ## START BUTTON ##
+
+    def on_start_button(self, pressed):
+        """Tap START to open the menu; hold it to peek at the play screen.
+
+        While it is held the play screen is active with all its buttons, so
+        another sample can be picked, and releasing returns to the screen the
+        peek started from - without opening the menu.
+        """
+        if pressed:
+            if self.input.select:       # START + SELECT is the quit combo
+                return
+            if self.start_held_at is not None:
+                return              # key repeat while held: don't restart the clock
+            if not self.mode.start_allowed():
+                return
+            self.start_held_at = time.time()
+            return
+
+        held, self.start_held_at = self.start_held_at, None
+        if self.peek_mode is not None:
+            self.set_mode(self.peek_mode)
+            self.peek_mode = None
+        elif held is not None and not self.input.select:
+            self.menu.open()
+
+    def check_start_hold(self):
+        """Main loop: START held long enough switches to the play screen.
+        Returns True when that just happened (the screen needs redrawing)."""
+        if (self.start_held_at is None or self.peek_mode is not None
+                or time.time() - self.start_held_at < config.MENU_HOLD_SECONDS):
+            return False
+        self.peek_mode = self.mode      # may be the play screen itself
+        self.set_mode(self.playmode)
+        return True
 
     ## MODES ##
 
@@ -187,6 +230,8 @@ class App:
             timeout = self.mode.frame_timeout
             if timeout is None:
                 timeout = config.IDLE_WAIT
+            if self.start_held_at is not None:
+                timeout = min(timeout, 0.02)    # watch for the hold to start
             ready = self.input.wait(timeout)
 
             started = time.time()
@@ -197,6 +242,8 @@ class App:
                 except Exception:
                     log.exception("error reading input")
             redraw = events > 0 or self.mode.frame_timeout is not None
+            if self.check_start_hold():
+                redraw = True
 
             if self.input.start and self.input.select:
                 App.running = False

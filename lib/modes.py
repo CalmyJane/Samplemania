@@ -71,6 +71,11 @@ class Mode:
     def on_left(self, pressed): pass
     def on_right(self, pressed): pass
     def on_start(self, pressed): pass
+
+    def start_allowed(self):
+        """May START open the menu / peek at playback right now? A screen that
+        is busy (recording) says no and shows why."""
+        return True
     def on_select(self, pressed): pass
     def on_left_shoulder(self, pressed): pass
     def on_right_shoulder(self, pressed): pass
@@ -128,11 +133,6 @@ class PlayMode(Mode):
     def on_select(self, pressed):
         if pressed:
             stop_or_fade(self.app.fadetime)
-
-    def on_start(self, pressed):
-        # start+select is the quit combo, handled by App - don't open the menu then
-        if pressed and not self.app.input.select:
-            self.app.menu.open()
 
     def on_red_buttons(self, pressed):
         if pressed:
@@ -234,11 +234,6 @@ class PitchMode(Mode):
         # before it - same behaviour as the play screen.
         if pressed:
             stop_all_channels()
-
-    def on_start(self, pressed):
-        # start+select is the quit combo, handled by App - don't open the menu then
-        if pressed and not self.app.input.select:
-            self.app.menu.open()
 
     ## DRAW ##
 
@@ -522,14 +517,12 @@ class RecordMode(Mode):
             return
         self.confirm = ConfirmDialog("DELETE THIS TAKE?", self.takes[self.sel])
 
-    def on_start(self, pressed):
-        if not pressed or self.app.input.select:
-            return
-        if self.recorder.recording:
+    def start_allowed(self):
+        if self.recorder is not None and self.recorder.recording:
             self.status = "STOP RECORDING FIRST"
-            return
+            return False
         self.confirm = None
-        self.app.menu.open()
+        return True
 
     ## DRAW ##
 

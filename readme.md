@@ -19,9 +19,15 @@ right away. See [Recording](#recording) below.
 
 ### Menu
 
-Press **START** on any screen to open the menu. It always opens with
-**Playback** picked - so pressing **START** twice always takes you back to
-playback. Pick an entry with UP / DOWN and open it with **A** or **START**.
+**Tap START** on any screen to open the menu - it opens when you let go.
+**Hold START** instead and the play screen appears for as long as you hold it:
+pick another preset, play another sample, and when you let go you are back on
+the screen you came from, without a menu. That is the quick way to change the
+sample that pitch mode plays.
+
+The menu always opens with **Playback** picked - so tapping **START** twice
+always takes you back to playback. Pick an entry with UP / DOWN and open it
+with **A** or **START**.
 **B** closes the menu and returns to the screen you were on, exactly as you
 left it.
 
@@ -42,7 +48,7 @@ The menu can't be opened while a recording is running - stop it first.
 | LEFT / RIGHT | previous / next preset |
 | UP / DOWN | page through the samples of the preset (6 per page) |
 | SELECT | stop all samples |
-| START | open the menu |
+| START | tap: open the menu   hold: peek at the play screen |
 | START + SELECT | quit |
 
 ### Pitch mode
@@ -57,7 +63,7 @@ plays the sample faster and therefore shorter.
 | LEFT / RIGHT | previous / next scale |
 | UP / DOWN | move the root one step of the scale up / down |
 | SELECT | stop all notes |
-| START | open the menu |
+| START | tap: open the menu   hold: peek at the play screen |
 
 The scales are chromatic (all half tones), major, minor, dorian, mixolydian,
 major and minor pentatonic, blues and whole tone. The labels show each
@@ -122,7 +128,7 @@ Open the menu with **START** and pick **Record** to reach the record screen:
 | A | preview the picked take (confirms when asked to delete) |
 | SELECT | delete the picked take (asks first) |
 | B | cancel: while holding Z it throws the running take away, otherwise it cancels the delete |
-| START | open the menu |
+| START | tap: open the menu   hold: peek at the play screen |
 | START + SELECT | quit |
 
 While recording, a level meter shows the input level and a timer shows the
