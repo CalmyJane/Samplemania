@@ -131,6 +131,7 @@ class Text:
         self.fontsize = fontsize
         self.color = color
         self.bgcolor = bgcolor
+        self.padding = options.get('padding', 1)   # bg margin around the text
         self.fontname = None
         self.set_font()
         self.render()
@@ -161,7 +162,7 @@ class Text:
     def draw(self, screen):
         """Draw the text image to the screen."""
         if self.bgcolor != None:
-            pygame.draw.rect(screen, self.bgcolor, self.rect.inflate(2,2))
+            pygame.draw.rect(screen, self.bgcolor, self.rect.inflate(self.padding * 2, self.padding * 2))
         screen.blit(self.img, self.rect)
 
 

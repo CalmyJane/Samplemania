@@ -131,7 +131,7 @@ class RecordMode(Mode):
     def __init__(self, app):
         Mode.__init__(self, app)
         self.recorder = recorder.Recorder()
-        self.meter = Meter((100, 180))
+        self.meter = Meter((100, 180), size=(330, 18))
         self.status = ""
         self.last_info = ""
         self.confirm = None         # ConfirmDialog while asking to delete
@@ -141,17 +141,18 @@ class RecordMode(Mode):
         self.sel = 0                # index into self.takes
         self.top = 0                # first visible row
 
-        # Labels are built once and re-rendered only when their text changes
-        self.lbl_title = Text("RECORD", (100, 90), 60, Color('white'), None)
-        self.lbl_timer = Text("  0.0s", (480, 100), 50, (255, 120, 120), None)
-        self.lbl_status = Text("", (100, 228), 26, (120, 255, 140), None)
-        self.lbl_header = Text("", (100, 258), 22, (150, 150, 150), None)
-        self.lbl_rows = [Text("", (100, 284 + i * 27), 26, (220, 220, 120), None)
+        # Labels are built once and re-rendered only when their text changes.
+        # Black backgrounds keep them readable over the background lines.
+        black = Color('black')
+        self.lbl_timer = Text("  0.0s", (492, 177), 30, (255, 120, 120), black, padding=4)
+        self.lbl_status = Text("", (100, 228), 26, (120, 255, 140), black, padding=4)
+        self.lbl_header = Text("", (100, 258), 22, (150, 150, 150), black, padding=4)
+        self.lbl_rows = [Text("", (100, 284 + i * 27), 26, (220, 220, 120), black, padding=4)
                          for i in range(self.VISIBLE)]
         self.lbl_help1 = Text("Z rec/stop   A preview   SELECT delete",
-                              (100, 380), 24, (180, 180, 180), None)
+                              (100, 380), 24, (180, 180, 180), black, padding=4)
         self.lbl_help2 = Text("UP/DOWN pick take   START back to play",
-                              (100, 408), 24, (180, 180, 180), None)
+                              (100, 408), 24, (180, 180, 180), black, padding=4)
 
     ## LIFECYCLE ##
 
@@ -371,11 +372,10 @@ class RecordMode(Mode):
     def draw(self, screen):
         app = self.app
         app.bg.draw(screen)
-        self.lbl_title.draw(screen)
 
         if self.recorder.recording:
             if self._blink < 18:
-                pygame.draw.circle(screen, (240, 40, 40), (450, 125), 18)
+                pygame.draw.circle(screen, (240, 40, 40), (478, 189), 8)
             self.lbl_timer.set_text("{0:5.1f}s".format(self.recorder.duration))
             self.lbl_timer.draw(screen)
 
