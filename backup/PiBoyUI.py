@@ -1,10 +1,7 @@
-import math
 import os
 import pygame
 from pygame import draw
 from pygame.locals import *
-
-from config import asset
 
 class Button(pygame.sprite.Sprite):
     def __init__(self, position, on_img, off_img):
@@ -32,7 +29,7 @@ class ButtonRow(pygame.sprite.Group):
         self.spritelist = []
         for i in range(3):
             for j in range(2):
-                btn = Button((i*50 + self.position[0], j*50 + self.position[1] - i*15), asset("button_on.png"), asset("button_off.png"))
+                btn = Button((i*50 + self.position[0], j*50 + self.position[1] - i*15), "/home/pi/RetroPie/roms/python/button_on.png", "/home/pi/RetroPie/roms/python/button_off.png")
                 self.add(btn)
                 self.spritelist.append(btn)
 
@@ -66,7 +63,7 @@ class Background:
         self.height = 480
         self.width = 640
         self.size = 25
-        self.image = pygame.image.load(asset('background.png'))
+        self.image = pygame.image.load('/home/pi/RetroPie/roms/python/background.png')
 
     def draw(self, screen):
         screen.fill(Color('black'))
@@ -80,15 +77,15 @@ class Background:
 class Dpad():
     def __init__(self,pos, *args, **kwargs):
         self.pos = pos
-        self.bg_img = pygame.image.load(asset('cross_bg.png'))
-        self.up_on_img = pygame.image.load(asset('cross_up_on.png'))
-        self.up_off_img = pygame.image.load(asset('cross_up_off.png'))
-        self.down_on_img = pygame.image.load(asset('cross_down_on.png'))
-        self.down_off_img = pygame.image.load(asset('cross_down_off.png'))
-        self.left_on_img = pygame.image.load(asset('cross_left_on.png'))
-        self.left_off_img = pygame.image.load(asset('cross_left_off.png'))
-        self.right_on_img = pygame.image.load(asset('cross_right_on.png'))
-        self.right_off_img = pygame.image.load(asset('cross_right_off.png'))
+        self.bg_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_bg.png')
+        self.up_on_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_up_on.png')
+        self.up_off_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_up_off.png')
+        self.down_on_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_down_on.png')
+        self.down_off_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_down_off.png')
+        self.left_on_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_left_on.png')
+        self.left_off_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_left_off.png')
+        self.right_on_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_right_on.png')
+        self.right_off_img = pygame.image.load('/home/pi/RetroPie/roms/python/cross_right_off.png')
         DEFAULT_IMAGE_SIZE = (80,80)
         self.bg_img = pygame.transform.scale(self.bg_img, DEFAULT_IMAGE_SIZE)
         self.up_on_img = pygame.transform.scale(self.up_on_img, DEFAULT_IMAGE_SIZE)
@@ -146,121 +143,8 @@ class Text:
         self.rect.x = self.pos[0]
         self.rect.y = self.pos[1]
 
-    def set_text(self, text):
-        """Change the string, re-rendering only when it actually differs.
-        Rendering a font every frame is wasted work on the Pi."""
-        if text != self.text:
-            self.text = text
-            self.render()
-
-    def set_color(self, color):
-        if color != self.color:
-            self.color = color
-            self.render()
-
     def draw(self, screen):
         """Draw the text image to the screen."""
         if self.bgcolor != None:
             pygame.draw.rect(screen, self.bgcolor, self.rect.inflate(2,2))
         screen.blit(self.img, self.rect)
-
-
-class Meter:
-    """Horizontal level meter with peak hold and a clip led.
-
-    Fed with 0..1 linear values but drawn on a dB scale, because linear looks
-    dead below half scale - which is where most of a spoken take sits.
-    """
-    FLOOR_DB = -48.0
-
-    def __init__(self, pos, size=(440, 34)):
-        self.pos = pos
-        self.size = size
-        self.rms = 0.0
-        self.peak = 0.0
-        self.peak_hold = 0.0
-        self.hold_frames = 0
-        self.clipped = False
-
-    def _to_db_fraction(self, value):
-        if value <= 0.0:
-            return 0.0
-        db = 20.0 * math.log10(max(value, 1e-6))
-        if db <= self.FLOOR_DB:
-            return 0.0
-        return min(1.0, (db - self.FLOOR_DB) / (0.0 - self.FLOOR_DB))
-
-    def set_values(self, rms, peak, clipped=False):
-        self.rms = rms
-        self.peak = peak
-        if clipped:
-            self.clipped = True
-        if peak >= self.peak_hold:
-            self.peak_hold = peak
-            self.hold_frames = 30      # ~1s at 30fps
-        elif self.hold_frames > 0:
-            self.hold_frames -= 1
-        else:
-            self.peak_hold = max(0.0, self.peak_hold - 0.02)
-
-    def reset(self):
-        self.rms = 0.0
-        self.peak = 0.0
-        self.peak_hold = 0.0
-        self.hold_frames = 0
-        self.clipped = False
-
-    def draw(self, screen):
-        x, y = self.pos
-        w, h = self.size
-
-        pygame.draw.rect(screen, (20, 20, 20), (x, y, w, h))
-        pygame.draw.rect(screen, (90, 90, 90), (x, y, w, h), 2)
-
-        filled = int(self._to_db_fraction(self.rms) * (w - 4))
-        for i in range(0, filled, 4):
-            frac = i / float(max(1, w - 4))
-            if frac > 0.92:
-                color = (230, 40, 40)
-            elif frac > 0.78:
-                color = (230, 200, 40)
-            else:
-                color = (40, 220, 80)
-            pygame.draw.rect(screen, color, (x + 2 + i, y + 2, 3, h - 4))
-
-        hold = int(self._to_db_fraction(self.peak_hold) * (w - 4))
-        if hold > 0:
-            pygame.draw.rect(screen, (255, 255, 255), (x + 2 + min(hold, w - 6), y + 2, 2, h - 4))
-
-        # clip led
-        led = (255, 40, 40) if self.clipped else (60, 20, 20)
-        pygame.draw.rect(screen, led, (x + w + 10, y, h, h))
-        pygame.draw.rect(screen, (90, 90, 90), (x + w + 10, y, h, h), 2)
-
-
-class ConfirmDialog:
-    """Modal yes/no box drawn over whatever mode is active."""
-
-    SIZE = (520, 180)
-
-    def __init__(self, message="", detail=""):
-        w, h = self.SIZE
-        self.rect = pygame.Rect((640 - w) // 2, (480 - h) // 2, w, h)
-        x, y = self.rect.x, self.rect.y
-
-        self.overlay = pygame.Surface((640, 480))
-        self.overlay.set_alpha(190)
-        self.overlay.fill((0, 0, 0))
-
-        self.title = Text(message, (x + 24, y + 22), 36, Color('white'), None)
-        self.detail = Text(detail, (x + 24, y + 68), 26, (200, 200, 200), None)
-        self.hint = Text("A = YES     B = NO", (x + 24, y + 122), 30, (255, 210, 80), None)
-
-    def draw(self, screen):
-        screen.blit(self.overlay, (0, 0))
-        pygame.draw.rect(screen, (25, 25, 30), self.rect)
-        pygame.draw.rect(screen, (230, 60, 60), self.rect, 3)
-        self.title.draw(screen)
-        if self.detail.text:
-            self.detail.draw(screen)
-        self.hint.draw(screen)

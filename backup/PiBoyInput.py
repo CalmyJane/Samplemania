@@ -1,5 +1,4 @@
 import os
-import select
 import evdev
 
 class PBInput():
@@ -107,17 +106,6 @@ class PBInput():
 
     def stop(self):
         self.stopping = True
-
-    def wait(self, timeout=None):
-        """Block until the controller has events, or until timeout seconds
-        elapse. timeout=None blocks indefinitely, which keeps button latency
-        identical to the old read_loop; a float lets animated screens redraw.
-        Returns True if there is something to read."""
-        try:
-            readable, _, _ = select.select([self.device.fd], [], [], timeout)
-        except (IOError, OSError):
-            return False
-        return bool(readable)
 
     def update(self):
         #poll inputs
