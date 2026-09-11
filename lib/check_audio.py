@@ -1,6 +1,6 @@
 """Run this on the PiBoy to check the recording setup:
 
-    python3 /home/pi/RetroPie/roms/python/check_audio.py
+    python3 /home/pi/RetroPie/roms/python/lib/check_audio.py
 
 Lists the audio devices, shows which one Samplemania would pick, and records a
 2 second test take so you can see whether the mic is actually producing level.
@@ -41,7 +41,7 @@ def main():
         print("\nNo usable input device: {0}".format(name))
         return 1
     print("\nSamplemania will record from: [{0}] {1}".format(index, name))
-    print("(to force a different one, set INPUT_DEVICE in config.py to that "
+    print("(to force a different one, set INPUT_DEVICE in lib/config.py to that "
           "index or a piece of the name)")
 
     print("\nRecording 2 seconds - say something...")

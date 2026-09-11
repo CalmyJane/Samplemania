@@ -1,6 +1,10 @@
 import os
+import sys
 import threading
 import time
+
+# Helper modules live in lib/ so this is the only .py EmulationStation lists
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 
 import pygame
 from pygame import mixer
@@ -11,82 +15,8 @@ import PiBoyUI
 from PiBoyUI import *
 import PiBoyInput
 from PiBoyInput import PBInput
-<<<<<<< HEAD
 from sampler import Sample, Preset
 from modes import PlayMode, RecordMode
-=======
-import time
-from pygame.mixer import Sound
-
-import threading
-
-class Sample():
-    def __init__(self, path):
-        self.path = path
-        self.sound = None
-        self.failed = False
-
-    def load(self):
-        """Synchronous load for a single file."""
-        if self.sound is None and not self.failed:
-            try:
-                self.sound = mixer.Sound(self.path)
-            except Exception as e:
-                print("Error loading {0}: {1}".format(self.path, e))
-                self.failed = True
-
-    def play(self, channel):
-        if self.sound:
-            channel.play(self.sound)
-        else:
-            # Fallback for thread-safety: load if not ready
-            self.load()
-            if self.sound:
-                channel.play(self.sound)
-
-    def get_name(self):
-        return (os.path.splitext(os.path.basename(self.path)))[0]
-
-class Preset:
-    def __init__(self, path):
-        self.name = os.path.basename(path)
-        self.samples = []
-        self.page = 0
-        
-        if os.path.isdir(path):
-            all_files = [f for f in os.listdir(path) if f.lower().endswith(('.wav', '.ogg'))]
-            all_files.sort()
-            for filename in all_files:
-                self.samples.append(Sample(os.path.join(path, filename)))
-        
-        self.numpages = max(1, int(math.ceil(float(len(self.samples)) / 6)))
-
-    def load_all(self):
-        """Triggers the load for every sample in this preset."""
-        for s in self.samples:
-            s.load()
-
-    def change_page(self, up):
-        if up:
-            self.page = (self.page - 1) % self.numpages
-        else:
-            self.page = (self.page + 1) % self.numpages
-
-    def play_sample(self, index, channel):
-        sample_idx = index + self.page * 6
-        if sample_idx < len(self.samples):
-            self.samples[sample_idx].play(channel)
-
-    def get_names(self):
-        names = []
-        for i in range(6):
-            sample_idx = i + self.page * 6
-            if sample_idx < len(self.samples):
-                names.append(self.samples[sample_idx].get_name())
-            else:
-                names.append("<EMPTY>")
-        return names
->>>>>>> 1a075312061082cd967472b38cd5f85d74a7e252
 
 
 ## MAIN APPLICATION ##
@@ -95,7 +25,6 @@ class App:
         """Initialize pygame and the application."""
         # 1. Sound pre-init first
         pygame.mixer.pre_init(44100, -16, 2, 512)
-<<<<<<< HEAD
 
         # 2. Full pygame init (Initializes Video, Audio, and Font)
         pygame.init()
@@ -104,40 +33,22 @@ class App:
         # This is the critical step for sudo/python3 compatibility
         App.screen = pygame.display.set_mode((640, 480))
 
-=======
-        
-        # 2. Full pygame init (Initializes Video, Audio, and Font)
-        pygame.init()
-        
-        # 3. SET DISPLAY MODE BEFORE TOUCHING MOUSE
-        # This is the critical step for sudo/python3 compatibility
-        App.screen = pygame.display.set_mode((640, 480))
-        
->>>>>>> 1a075312061082cd967472b38cd5f85d74a7e252
         # 4. Now hide the mouse
         pygame.mouse.set_visible(False)
 
         # Create 6 dedicated channels
         self.channels = [mixer.Channel(i) for i in range(6)]
-<<<<<<< HEAD
 
-=======
-        
->>>>>>> 1a075312061082cd967472b38cd5f85d74a7e252
         App.bg = Background()
         App.running = True
         self.bgcounter = 0
         self.input = PBInput()
         self.dpad = Dpad((77, 220))
 
-<<<<<<< HEAD
         # Every button is routed to whichever mode is active
         for name in ('A', 'B', 'C', 'X', 'Y', 'Z', 'left', 'right', 'up', 'down',
                      'left_shoulder', 'right_shoulder', 'red_buttons', 'select', 'start'):
             self.input.set_callback(name, self._dispatch(name.lower()))
-=======
-        self.fadetime = 0
->>>>>>> 1a075312061082cd967472b38cd5f85d74a7e252
 
         self.fadetime = 0
         self.mode = None

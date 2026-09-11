@@ -1,7 +1,8 @@
 import os
 
-# Directory this app lives in - all png assets are loaded relative to it
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
+# Root of the app (this file lives in lib/), graphics are loaded from graphics/
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+GRAPHICS_DIR = os.path.join(APP_DIR, "graphics")
 
 # Sample library. Every subfolder in here shows up as a preset.
 SAMPLE_DIR = "/home/pi/RetroPie/files/samples"
@@ -34,8 +35,8 @@ INPUT_DEVICE = None
 
 
 def asset(name):
-    """Absolute path to a png/asset shipped next to the app."""
-    return os.path.join(APP_DIR, name)
+    """Absolute path to a png/asset in the graphics folder."""
+    return os.path.join(GRAPHICS_DIR, name)
 
 
 def ensure_dirs():
