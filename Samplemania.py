@@ -3,7 +3,9 @@ import sys
 import threading
 import time
 
-# Helper modules live in lib/ so this is the only .py EmulationStation lists
+# Helper modules live in lib/ so this is the only .py EmulationStation lists.
+# No __pycache__ in lib/ either, the folder gets copied to the PiBoy by hand.
+sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 
 import pygame

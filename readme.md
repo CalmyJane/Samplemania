@@ -86,6 +86,12 @@ it still finds the start of a word in a loud room; if nothing rises above the
 floor the full take is kept instead. The raw file is never modified, so a bad
 trim can always be redone from it.
 
+The click of the record button is ignored by the trim: a short, isolated
+click in the first half second of a take doesn't count as the start of the
+sound and never ends up in the trimmed sample. Leave a short moment after
+pressing record before making the sound you want. Clicks later in the take
+are kept, so you can record a click sound on purpose.
+
 The trimmed copy is also peak normalised to -3dBFS, because USB mics record
 far too quietly to sit next to the rest of the library. `NORMALIZE`,
 `TARGET_PEAK_DBFS` and `MAX_GAIN_DB` in `lib/config.py` control that; the 30dB gain

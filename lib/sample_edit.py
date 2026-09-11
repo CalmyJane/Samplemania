@@ -103,6 +103,42 @@ def _sustained(over, min_windows):
     return np.array([starts[0], starts[-1] + min_windows - 1])
 
 
+def _runs(over):
+    """(start, end) window indices of each run of True values, end exclusive."""
+    edges = np.diff(np.concatenate(([0], over.astype(np.int8), [0])))
+    return list(zip(np.nonzero(edges == 1)[0], np.nonzero(edges == -1)[0]))
+
+
+def _drop_start_click(over, head_windows, max_windows, gap_windows):
+    """Remove the click of the PiBoy's record button from an over-threshold mask.
+
+    A click is a short run (max_windows or less) starting inside the first
+    head_windows, followed by at least gap_windows of quiet before the next
+    sound. The gap keeps the first consonant of a word spoken straight away
+    from being mistaken for a click.
+
+    Only the start of the take is guarded: anything later, including a click
+    made on purpose, is real content.
+
+    Returns (mask, head_end): head_end is the window after the last dropped
+    click, so the preroll can be kept clear of it.
+    """
+    over = over.copy()
+    runs = _runs(over)
+    head_end = 0
+
+    for i, (s, e) in enumerate(runs):
+        if s >= head_windows:
+            break
+        next_start = runs[i + 1][0] if i + 1 < len(runs) else len(over)
+        if e - s > max_windows or next_start - e < gap_windows:
+            break           # real sound has started, keep everything from here
+        over[s:e] = False
+        head_end = e
+
+    return over, head_end
+
+
 def smart_trim(data, samplerate,
                window_ms=10.0,
                floor_percentile=10.0,
@@ -112,7 +148,10 @@ def smart_trim(data, samplerate,
                tail_ms=150.0,
                fade_in_ms=5.0,
                fade_out_ms=20.0,
-               min_floor=8.0):
+               min_floor=8.0,
+               click_head_ms=500.0,
+               click_max_ms=120.0,
+               click_gap_ms=60.0):
     """Cut leading/trailing room noise, adaptively.
 
     The noise floor is estimated from the quietest 10% of windows in the take
@@ -125,6 +164,13 @@ def smart_trim(data, samplerate,
     room itself, and it still catches a quiet talker in a loud bar. A stray
     transient can beat it though, hence min_run_ms: the level has to stay up
     for 50ms before it counts as the start of the take.
+
+    The record button is on the PiBoy itself, so its click (and the release
+    of it, and the pop of the stream opening) lands in the first moments of
+    the take. Short isolated bursts in the first click_head_ms are ignored,
+    and the preroll is never allowed to reach back into them. A sound meant
+    to be recorded that close to pressing record is lost - the raw take still
+    has it. Clicks later in the take are always kept.
 
     min_floor keeps the threshold off zero on digitally silent input.
     Returns (trimmed int16 array, True) or (original, False) if nothing in the
@@ -142,14 +188,20 @@ def smart_trim(data, samplerate,
     floor = float(np.percentile(rms, floor_percentile))
     threshold = max(floor * threshold_mult, min_floor)
 
-    min_windows = max(1, int(min_run_ms / window_ms))
-    loud = _sustained(rms > threshold, min_windows)
+    def windows(ms):
+        return max(1, int(round(ms / window_ms)))
+
+    over, head_end = _drop_start_click(
+        rms > threshold, windows(click_head_ms),
+        windows(click_max_ms), windows(click_gap_ms))
+
+    loud = _sustained(over, windows(min_run_ms))
     if loud.size == 0:
         return data, False
 
     start = int(loud[0] * win - samplerate * preroll_ms / 1000.0)
     end = int((loud[-1] + 1) * win + samplerate * tail_ms / 1000.0)
-    start = max(0, start)
+    start = max(0, start, head_end * win)
     end = min(len(data), end)
     if end - start < win:
         return data, False
