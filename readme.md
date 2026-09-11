@@ -28,6 +28,7 @@ left it.
 | Entry | What it does |
 | --- | --- |
 | Playback | play samples from your library |
+| Pitch | play the sample you last triggered as a scale |
 | Record | record new samples with a USB mic |
 | Exit | quit Samplemania - asks first, confirm with **A** (START never confirms, so it can't quit by accident) |
 
@@ -44,11 +45,34 @@ The menu can't be opened while a recording is running - stop it first.
 | START | open the menu |
 | START + SELECT | quit |
 
+### Pitch mode
+
+Pitch mode plays the sample you triggered last on the play screen across the
+6 buttons, as a scale. Pitching works like an old sampler - a higher note
+plays the sample faster and therefore shorter.
+
+| Button | Action |
+| --- | --- |
+| A / B / C / X / Y / Z | play the 1st - 6th step of the scale (cuts off the note before) |
+| LEFT / RIGHT | previous / next scale |
+| UP / DOWN | move the root one step of the scale up / down |
+| SELECT | stop all notes |
+| START | open the menu |
+
+The scales are chromatic (all half tones), major, minor, dorian, mixolydian,
+major and minor pentatonic, blues and whole tone. The labels show each
+button's distance in half tones from the original sample, so `+0 +2 +4 +5 +7
++9` is a major scale on the sample's own pitch.
+
+Like on the play screen, a new note cuts off the one before it. Only the
+first 10 seconds of a sample are pitched.
+
 ## Folder structure
 
     Samplemania.py      launcher - the only file EmulationStation needs to list
     lib/                the app and its modules
       app.py            the application itself
+      pitch.py          scales and the pitched copies for pitch mode
       config.py         paths, recording format, loudness and mic settings
       check_audio.py    diagnostic tool for the recording setup
     graphics/           images used by the UI

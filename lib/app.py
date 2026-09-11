@@ -15,7 +15,7 @@ from stability import log
 from PiBoyUI import *
 from PiBoyInput import PBInput
 from sampler import Preset, Loader, graveyard
-from modes import PlayMode, RecordMode, Menu
+from modes import PlayMode, PitchMode, RecordMode, Menu
 
 # A frame (input handling + drawing) slower than this gets logged
 SLOW_FRAME = 0.05
@@ -61,6 +61,7 @@ class App:
         self.mode = None
         self.menu = None
         self.activepreset = None
+        self.last_sample = None     # last sample played, pitch mode uses it
         self.loader = Loader()
         self.watchdog = stability.Watchdog(config.WATCHDOG_SECONDS)
 
@@ -146,12 +147,14 @@ class App:
         self.lasttime = time.time()
 
         self.playmode = PlayMode(self)
+        self.pitchmode = PitchMode(self)
         self.recordmode = RecordMode(self)
 
         # Main menu (START). Add new features here as (label, mode), or
         # (label, function) for an action.
         self.menu = Menu(self, [
             ("Playback", self.playmode),
+            ("Pitch", self.pitchmode),
             ("Record", self.recordmode),
             ("Exit", self.ask_exit),
         ])
@@ -231,6 +234,7 @@ class App:
             if self.mode is not None:
                 self.mode.exit()
             self.loader.stop()
+            self.pitchmode.engine.stop()
             mixer.stop()
         except Exception:
             log.exception("error while shutting down")

@@ -16,6 +16,8 @@ prefer the boring, robust solution over a clever one.
   and never drop the last reference to a `Sound` - hand it to `sampler.graveyard`, which
   frees sounds only while the mixer is idle.
 - **One background loader** (`sampler.Loader`) - never start a thread per preset/action.
+  Background work that is pure Python/numpy (e.g. `pitch.PitchEngine` resampling) holds
+  the GIL too: do it in small chunks with a `time.sleep(0.001)` in between.
 - **Never block the main loop:** it has to come round at least every `config.IDLE_WAIT`
   seconds, or the watchdog (`stability.Watchdog`, `config.WATCHDOG_SECONDS`) kills the app.
   Known long operations must call `app.watchdog.feed(seconds)` first (see saving a take).
@@ -67,8 +69,9 @@ also be copied to the PiBoy.
     Samplemania.py   launcher: runs lib/app.py, restarts it after a crash/hang
     lib/             app (App + main loop), stability (log, watchdog), PiBoyUI,
                      PiBoyInput, sampler (samples, loader, graveyard), modes
-                     (play/record screens, menu), recorder, sample_edit
-                     (trim/normalise), config, check_audio
+                     (play/pitch/record screens, menu), pitch (scales +
+                     resampling), recorder, sample_edit (trim/normalise),
+                     config, check_audio
     graphics/        UI images (loaded via config.asset)
 
 ## Screens and the menu

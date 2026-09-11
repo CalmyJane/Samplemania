@@ -155,9 +155,14 @@ class Preset:
             self.page = (self.page + 1) % self.numpages
 
     def play_sample(self, index, channel):
+        """Play the sample on button `index` of the current page and return
+        it, so the app can remember what was played last (pitch mode)."""
         sample_idx = index + self.page * SAMPLES_PER_PAGE
         if sample_idx < len(self.samples):
-            self.samples[sample_idx].play(channel)
+            sample = self.samples[sample_idx]
+            sample.play(channel)
+            return sample
+        return None
 
     def get_names(self):
         names = []

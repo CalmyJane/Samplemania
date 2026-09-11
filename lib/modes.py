@@ -9,6 +9,7 @@ from pygame import mixer
 from pygame.locals import Color
 
 import config
+import pitch
 import recorder
 import sample_edit
 from PiBoyUI import Text, Meter, ConfirmDialog
@@ -21,6 +22,19 @@ def stop_all_channels():
     fewer of those, the fewer chances to collide with the audio thread."""
     if mixer.get_busy():
         mixer.stop()
+
+
+def stop_or_fade(fadetime):
+    """SELECT: stop everything, or fade it out over fadetime ms.
+
+    fadetime 0 means instant, so it has to be a real stop - mixer.fadeout(0)
+    only takes effect with the next audio buffer, which is audible as a short
+    tail when you cut the music.
+    """
+    if fadetime > 0:
+        mixer.fadeout(fadetime)
+    else:
+        stop_all_channels()
 
 
 class Mode:
@@ -84,7 +98,9 @@ class PlayMode(Mode):
         self.app.buttonrow.set_button(button_index, pressed)
         self.app.presetview.highlight(list_index, pressed)
         if pressed:
-            self.app.activepreset.play_sample(list_index, self.app.channels[list_index])
+            sample = self.app.activepreset.play_sample(list_index, self.app.channels[list_index])
+            if sample is not None:
+                self.app.last_sample = sample       # pitch mode plays this one
 
     def on_a(self, pressed): self._hit(5, 5, pressed)
     def on_b(self, pressed): self._hit(3, 4, pressed)
@@ -111,7 +127,7 @@ class PlayMode(Mode):
 
     def on_select(self, pressed):
         if pressed:
-            mixer.fadeout(self.app.fadetime)
+            stop_or_fade(self.app.fadetime)
 
     def on_start(self, pressed):
         # start+select is the quit combo, handled by App - don't open the menu then
@@ -122,6 +138,119 @@ class PlayMode(Mode):
         if pressed:
             # Instant stop across all channels for beat-tight performance
             stop_all_channels()
+
+
+class PitchMode(Mode):
+    """Play the sample you triggered last as a scale across the 6 buttons.
+
+    The buttons are the first six steps of the scale, starting at the root.
+    LEFT/RIGHT pick the scale (chromatic, major, minor, pentatonics, ...),
+    UP/DOWN move the root one step of that scale. Like the play screen, a new
+    note cuts off the one before it.
+
+    The pitched copies come from lib/pitch.py, which prepares the six notes
+    of the current scale in the background.
+    """
+
+    frame_timeout = None
+
+    def __init__(self, app):
+        Mode.__init__(self, app)
+        self.engine = pitch.PitchEngine()
+        self.scale = 0              # index into pitch.SCALES
+        self.root = 0               # in steps of that scale
+        self.notes = [0] * 6        # semitone offset per button
+
+        self.lbl_scale = Text("", (100, 150), 50, Color('white'), None)
+        self.lbl_sample = Text("", (100, 200), 22, (180, 180, 180),
+                               Color('black'), padding=4)
+
+    ## LIFECYCLE ##
+
+    def enter(self):
+        sample = self.app.last_sample
+        if sample is None:
+            self.engine.set_source(None)
+        else:
+            if sample.sound is None:
+                sample.load()
+            self.engine.set_source(sample.sound, sample.get_name())
+        self._refresh()
+
+    def _refresh(self):
+        """Work out the six notes, relabel and prepare them in the background."""
+        name, intervals = pitch.SCALES[self.scale]
+        self.notes = [pitch.step_semitones(intervals, self.root + i) for i in range(6)]
+        self.lbl_scale.set_text(name)
+        if self.engine.ready:
+            self.lbl_sample.set_text("{0}   L/R scale   U/D root".format(self.engine.name[:22]))
+            self.app.presetview.set_strings(["{0:+d}".format(n) for n in self.notes])
+            self.engine.want(self.notes)
+        else:
+            self.lbl_sample.set_text("PLAY A SAMPLE ON THE PLAY SCREEN FIRST")
+            self.app.presetview.set_strings(["-"] * 6)
+
+    ## INPUT ##
+
+    def _hit(self, button_index, note_index, pressed):
+        self.app.buttonrow.set_button(button_index, pressed)
+        self.app.presetview.highlight(note_index, pressed)
+        if pressed and self.engine.ready:
+            self.engine.play(self.notes[note_index], self.app.channels[note_index])
+
+    def on_a(self, pressed): self._hit(5, 5, pressed)
+    def on_b(self, pressed): self._hit(3, 4, pressed)
+    def on_c(self, pressed): self._hit(1, 3, pressed)
+    def on_x(self, pressed): self._hit(4, 2, pressed)
+    def on_y(self, pressed): self._hit(2, 1, pressed)
+    def on_z(self, pressed): self._hit(0, 0, pressed)
+
+    def on_up(self, pressed):
+        if pressed:
+            self.root += 1
+            self._refresh()
+
+    def on_down(self, pressed):
+        if pressed:
+            self.root -= 1
+            self._refresh()
+
+    def on_left(self, pressed):
+        if pressed:
+            self.scale = (self.scale - 1) % len(pitch.SCALES)
+            self._refresh()
+
+    def on_right(self, pressed):
+        if pressed:
+            self.scale = (self.scale + 1) % len(pitch.SCALES)
+            self._refresh()
+
+    def on_select(self, pressed):
+        if pressed:
+            stop_or_fade(self.app.fadetime)
+
+    def on_red_buttons(self, pressed):
+        # Fires before the note's own handler, so every note cuts off the one
+        # before it - same behaviour as the play screen.
+        if pressed:
+            stop_all_channels()
+
+    def on_start(self, pressed):
+        # start+select is the quit combo, handled by App - don't open the menu then
+        if pressed and not self.app.input.select:
+            self.app.menu.open()
+
+    ## DRAW ##
+
+    def draw(self, screen):
+        app = self.app
+        app.dpad.set_values(app.input.up, app.input.down, app.input.left, app.input.right)
+        app.bg.draw(screen)
+        app.dpad.draw(screen)
+        app.presetview.draw(screen)
+        app.buttonrow.draw(screen)
+        self.lbl_scale.draw(screen)
+        self.lbl_sample.draw(screen)
 
 
 class RecordMode(Mode):
