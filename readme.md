@@ -93,11 +93,11 @@ Open the menu with **START** and pick **Record** to reach the record screen:
 
 | Button | Action |
 | --- | --- |
-| Z | hold to record, release to stop (a tap under 0.3s is discarded) |
+| Z | hold to record, release to stop and save (a tap under 0.3s is discarded) |
 | UP / DOWN | pick a take from the list |
 | A | preview the picked take (confirms when asked to delete) |
 | SELECT | delete the picked take (asks first) |
-| B | cancel the delete |
+| B | cancel: while holding Z it throws the running take away, otherwise it cancels the delete |
 | START | open the menu |
 | START + SELECT | quit |
 

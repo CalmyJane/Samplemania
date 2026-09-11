@@ -135,6 +135,10 @@ class RecordMode(Mode):
     VISIBLE = 3                 # take rows that fit under the meter
     MIN_TAKE_SECONDS = 0.3      # shorter holds are a tap, not a take - discarded
 
+    HELP1 = "hold Z record   A preview   SELECT delete"
+    HELP2 = "UP/DOWN pick take   START menu"
+    HELP_RECORDING = "release Z to save     B cancels the take"
+
     def __init__(self, app):
         Mode.__init__(self, app)
         self.recorder = None        # created on first enter, see there
@@ -157,10 +161,8 @@ class RecordMode(Mode):
         self.lbl_header = Text("", (100, 258), 22, (150, 150, 150), black, padding=4)
         self.lbl_rows = [Text("", (100, 284 + i * 27), 26, (220, 220, 120), black, padding=4)
                          for i in range(self.VISIBLE)]
-        self.lbl_help1 = Text("hold Z record   A preview   SELECT delete",
-                              (100, 380), 24, (180, 180, 180), black, padding=4)
-        self.lbl_help2 = Text("UP/DOWN pick take   START menu",
-                              (100, 408), 24, (180, 180, 180), black, padding=4)
+        self.lbl_help1 = Text(self.HELP1, (100, 380), 24, (180, 180, 180), black, padding=4)
+        self.lbl_help2 = Text(self.HELP2, (100, 408), 24, (180, 180, 180), black, padding=4)
 
     ## LIFECYCLE ##
 
@@ -361,9 +363,17 @@ class RecordMode(Mode):
             self._preview()
 
     def on_b(self, pressed):
-        if pressed and self.confirm:
+        if not pressed:
+            return
+        if self.confirm:
             self.confirm = None
             self.status = "CANCELLED"
+        elif self.recorder is not None and self.recorder.recording:
+            # B while Z is held: throw the take away. Releasing Z afterwards
+            # finds nothing recording and saves nothing.
+            self.recorder.abort()
+            self.meter.reset()
+            self.status = "RECORDING CANCELLED"
 
     def on_up(self, pressed):
         if pressed and not self.confirm and not self.recorder.recording:
@@ -413,8 +423,16 @@ class RecordMode(Mode):
 
         self._draw_takes(screen)
 
+        # While recording, the help line says how to save or cancel instead
+        if self.recorder is not None and self.recorder.recording:
+            self.lbl_help1.set_text(self.HELP_RECORDING)
+            self.lbl_help2.set_text("")
+        else:
+            self.lbl_help1.set_text(self.HELP1)
+            self.lbl_help2.set_text(self.HELP2)
         self.lbl_help1.draw(screen)
-        self.lbl_help2.draw(screen)
+        if self.lbl_help2.text:
+            self.lbl_help2.draw(screen)
 
         if self.confirm:
             self.confirm.draw(screen)
