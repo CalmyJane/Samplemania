@@ -4,6 +4,21 @@ import os
 APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GRAPHICS_DIR = os.path.join(APP_DIR, "graphics")
 
+# Log file - errors, slow frames, hangs and restarts end up here
+LOG_PATH = os.path.join(APP_DIR, "samplemania.log")
+
+# Seconds the main loop may stall before the app is killed and restarted.
+# The loop normally comes round at least every IDLE_WAIT seconds.
+WATCHDOG_SECONDS = 8.0
+IDLE_WAIT = 0.5
+
+# Runtime files. /dev/shm is RAM: no SD card writes, gone after a reboot.
+RUN_DIR = "/dev/shm" if os.path.isdir("/dev/shm") else APP_DIR
+# Current preset and page, so an app restarted by the launcher comes back there
+STATE_PATH = os.path.join(RUN_DIR, "samplemania.state")
+# Created when the user quits on purpose - the launcher then never restarts
+QUIT_MARKER = os.path.join(RUN_DIR, "samplemania.quit")
+
 # Sample library. Every subfolder in here shows up as a preset.
 SAMPLE_DIR = "/home/pi/RetroPie/files/samples"
 

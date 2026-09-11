@@ -1,5 +1,7 @@
+import errno
 import os
 import select
+import time
 import evdev
 
 class PBInput():
@@ -8,10 +10,10 @@ class PBInput():
         #Init Controller Input
         self.printany = False
         #search for PiBoy Gamecontroller
-        for dp in evdev.list_devices():
-            device = evdev.InputDevice(dp)
-            if "PiBoy" in device.name:
-                self.device = device
+        self.device = self._find_device()
+        if self.device is None:
+            raise RuntimeError("PiBoy controller not found")
+        self.lost_since = None   # time the device vanished, None while it's there
 
         self.a = False
         self.b = False
@@ -32,15 +34,42 @@ class PBInput():
 
 
 
+    @staticmethod
+    def _find_device():
+        for dp in evdev.list_devices():
+            try:
+                device = evdev.InputDevice(dp)
+            except (IOError, OSError):
+                continue
+            if "PiBoy" in device.name:
+                return device
+        return None
+
+    def _reconnect(self):
+        """Try to reopen the controller, at most once a second."""
+        if time.time() - self._last_reconnect < 1.0:
+            return
+        self._last_reconnect = time.time()
+        device = self._find_device()
+        if device is not None:
+            self.device = device
+            self.lost_since = None
+
+    _last_reconnect = 0.0
+
     def get_mousebtn_events(self, device):
         try:
             events = list(device.read())
-            for event in events:
-                if event.type==evdev.ecodes.EV_KEY:
-                    yield event
-        except IOError:
-            pass
-            #print('Looks like the device was idle since the last read')
+        except (IOError, OSError) as e:
+            # EAGAIN just means nothing to read. Anything else (ENODEV...)
+            # means the controller is gone - stop reading from the dead fd,
+            # select() would report it readable forever and spin the CPU.
+            if e.errno not in (errno.EAGAIN, errno.EWOULDBLOCK, errno.EINTR):
+                self.lost_since = self.lost_since or time.time()
+            return
+        for event in events:
+            if event.type==evdev.ecodes.EV_KEY:
+                yield event
     
     def listen(self):
         #poll inputs
@@ -110,12 +139,18 @@ class PBInput():
 
     def wait(self, timeout=None):
         """Block until the controller has events, or until timeout seconds
-        elapse. timeout=None blocks indefinitely, which keeps button latency
-        identical to the old read_loop; a float lets animated screens redraw.
-        Returns True if there is something to read."""
+        elapse. timeout=None blocks indefinitely; the main loop passes a
+        timeout so it keeps coming round. Returns True if there is something
+        to read."""
+        if self.lost_since is not None:
+            self._reconnect()
+            if self.lost_since is not None:
+                time.sleep(min(timeout or 1.0, 1.0))
+                return False
         try:
             readable, _, _ = select.select([self.device.fd], [], [], timeout)
-        except (IOError, OSError):
+        except (IOError, OSError, ValueError):
+            self.lost_since = self.lost_since or time.time()
             return False
         return bool(readable)
 
@@ -189,6 +224,7 @@ class PBInput():
             self.red_button = self.a or self.b or self.c or self.x or self.y or self.z
         if any:
             self.on_any(events)
+        return len(events)
             
     def set_callback(self, cb_type, cb):
         if cb_type.upper() == 'ANY':

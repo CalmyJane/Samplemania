@@ -2,6 +2,34 @@
 
 Musical sample player + recorder for the PiBoy DMG (Raspberry Pi based handheld running RetroPie).
 
+## Stability comes first - it is used in live performances
+
+Playback must never lag, hang or crash on stage. Weigh every change against that, and
+prefer the boring, robust solution over a clever one.
+
+- **GIL vs. audio thread:** when a sample ends, pygame's SDL audio thread takes the GIL.
+  Anything that holds the GIL for long (heavy drawing, font rendering, big Python loops)
+  starves the mixer -> crackles/lag. Calls that take SDL's audio lock while holding the GIL
+  (stopping channels, freeing a `Sound`) can deadlock against it for good on older pygame.
+  So: keep the main thread light, redraw only when something changed, pre-render and
+  `convert()` surfaces, stop channels with one `mixer.stop()` only when `mixer.get_busy()`,
+  and never drop the last reference to a `Sound` - hand it to `sampler.graveyard`, which
+  frees sounds only while the mixer is idle.
+- **One background loader** (`sampler.Loader`) - never start a thread per preset/action.
+- **Never block the main loop:** it has to come round at least every `config.IDLE_WAIT`
+  seconds, or the watchdog (`stability.Watchdog`, `config.WATCHDOG_SECONDS`) kills the app.
+  Known long operations must call `app.watchdog.feed(seconds)` first (see saving a take).
+- **Errors are logged, not fatal:** button handlers, drawing and ticks run inside
+  try/except in `lib/app.py` and log to `samplemania.log`. Don't add code paths outside that.
+- `Samplemania.py` is a launcher that restarts the app (`lib/app.py`) after a crash or
+  hang and restores preset/page. START + SELECT writes a quit marker so it doesn't restart.
+- Keep playback independent of optional features: e.g. `sounddevice`/PortAudio is only
+  imported when the record screen is opened.
+- Test what can be tested offline before handing over: the stress test pattern (fake
+  controller, real main loop, random presses/preset changes for 60s, check threads,
+  memory, errors) catches regressions. Redirect `config.LOG_PATH`, `STATE_PATH` and
+  `QUIT_MARKER` to the scratchpad in tests so no files land in the project.
+
 ## Deployment - keep this in mind for every change
 
 - The code is developed on Windows but **runs only on the PiBoy**. It is copied there
@@ -36,7 +64,21 @@ also be copied to the PiBoy.
 
 ## Layout
 
-    Samplemania.py   entry point, adds lib/ to sys.path
-    lib/             PiBoyUI, PiBoyInput, sampler, modes (play/record screens),
-                     recorder, sample_edit (trim/normalise), config, check_audio
+    Samplemania.py   launcher: runs lib/app.py, restarts it after a crash/hang
+    lib/             app (App + main loop), stability (log, watchdog), PiBoyUI,
+                     PiBoyInput, sampler (samples, loader, graveyard), modes
+                     (play/record screens, menu), recorder, sample_edit
+                     (trim/normalise), config, check_audio
     graphics/        UI images (loaded via config.asset)
+
+## Screens and the menu
+
+Each screen is a `Mode` subclass in `lib/modes.py` (button handlers `on_a`, `on_up`, ...,
+plus `enter`/`exit`/`tick`/`draw`). START opens the `Menu`, an overlay drawn on top of
+the active mode - the mode is not exited while the menu is open. The menu always opens
+with the first entry (Playback) picked; A or START selects, B closes, so START, START
+always returns to playback. To add a feature: write a new `Mode`, create it in `App.run()`
+in `lib/app.py` and add a `(label, mode)` entry to the menu list there. An entry can also
+be `(label, function)` for an action; use `menu.ask(message, on_yes)` for a yes/no
+confirmation (A = yes, B = no, START never confirms). Keep START free in new modes (it
+opens the menu) and START + SELECT is always quit.

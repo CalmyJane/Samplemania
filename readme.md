@@ -17,25 +17,55 @@ It can also **record** from a USB microphone: takes are auto-trimmed, normalised
 and dropped into the library as a preset called `Recordings`, ready to play
 right away. See [Recording](#recording) below.
 
-### Controls
+### Menu
+
+Press **START** on any screen to open the menu. It always opens with
+**Playback** picked - so pressing **START** twice always takes you back to
+playback. Pick an entry with UP / DOWN and open it with **A** or **START**.
+**B** closes the menu and returns to the screen you were on, exactly as you
+left it.
+
+| Entry | What it does |
+| --- | --- |
+| Playback | play samples from your library |
+| Record | record new samples with a USB mic |
+| Exit | quit Samplemania - asks first, confirm with **A** (START never confirms, so it can't quit by accident) |
+
+The menu can't be opened while a recording is running - stop it first.
+
+### Playback controls
 
 | Button | Action |
 | --- | --- |
-| A / B / C / X / Y / Z | play the sample on that button |
+| A / B / C / X / Y / Z | play the sample on that button (cuts off any sample still playing) |
 | LEFT / RIGHT | previous / next preset |
 | UP / DOWN | page through the samples of the preset (6 per page) |
-| SELECT | fade out all samples |
-| red buttons | stop all samples instantly |
-| START | go to the record screen |
+| SELECT | stop all samples |
+| START | open the menu |
 | START + SELECT | quit |
 
 ## Folder structure
 
-    Samplemania.py      the app - the only file EmulationStation needs to list
-    lib/                helper modules (UI, input, sampler, recorder, config, ...)
+    Samplemania.py      launcher - the only file EmulationStation needs to list
+    lib/                the app and its modules
+      app.py            the application itself
       config.py         paths, recording format, loudness and mic settings
       check_audio.py    diagnostic tool for the recording setup
     graphics/           images used by the UI
+
+## Stability
+
+Samplemania is built to be played live, so it protects itself:
+
+- `Samplemania.py` is only a launcher. It runs the app, and if the app ever
+  crashes or freezes it is restarted within a few seconds - back on the preset
+  and page you were on. Only quitting with **START + SELECT** really exits.
+- A watchdog notices a frozen app (no reaction for 8 seconds) and triggers
+  that restart.
+- Everything noteworthy - errors, slow frames, freezes with the exact place
+  they happened, restarts - is written to `samplemania.log` next to
+  `Samplemania.py` (on the PiBoy: `\\retropie\roms\python\samplemania.log`).
+  If something goes wrong on stage, that file tells what happened.
 
 ## How to run this
 
@@ -59,16 +89,16 @@ I hope you find other ways to play around here, this was a really fun project, a
 Samplemania can record from a USB microphone and drop the takes straight into
 the library as a preset called `Recordings`.
 
-Press **START** in the play screen to reach the record screen:
+Open the menu with **START** and pick **Record** to reach the record screen:
 
 | Button | Action |
 | --- | --- |
-| Z | start / stop recording |
+| Z | hold to record, release to stop (a tap under 0.3s is discarded) |
 | UP / DOWN | pick a take from the list |
 | A | preview the picked take (confirms when asked to delete) |
 | SELECT | delete the picked take (asks first) |
 | B | cancel the delete |
-| START | back to the play screen |
+| START | open the menu |
 | START + SELECT | quit |
 
 While recording, a level meter shows the input level and a timer shows the
@@ -86,11 +116,12 @@ it still finds the start of a word in a loud room; if nothing rises above the
 floor the full take is kept instead. The raw file is never modified, so a bad
 trim can always be redone from it.
 
-The click of the record button is ignored by the trim: a short, isolated
-click in the first half second of a take doesn't count as the start of the
-sound and never ends up in the trimmed sample. Leave a short moment after
-pressing record before making the sound you want. Clicks later in the take
-are kept, so you can record a click sound on purpose.
+The clicks of the record button are ignored by the trim: a short, isolated
+click in the first half second (pressing Z) or the last 0.2 seconds (releasing
+Z) of a take never ends up in the trimmed sample. Leave a short moment after
+pressing Z before making your sound, and let it finish before you release.
+Clicks anywhere else in the take are kept, so you can record a click sound on
+purpose.
 
 The trimmed copy is also peak normalised to -3dBFS, because USB mics record
 far too quietly to sit next to the rest of the library. `NORMALIZE`,

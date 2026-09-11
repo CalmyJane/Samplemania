@@ -117,8 +117,8 @@ def _drop_start_click(over, head_windows, max_windows, gap_windows):
     sound. The gap keeps the first consonant of a word spoken straight away
     from being mistaken for a click.
 
-    Only the start of the take is guarded: anything later, including a click
-    made on purpose, is real content.
+    smart_trim also runs it on the reversed mask, which finds the click of
+    releasing the button at the very end of the take.
 
     Returns (mask, head_end): head_end is the window after the last dropped
     click, so the preroll can be kept clear of it.
@@ -150,6 +150,7 @@ def smart_trim(data, samplerate,
                fade_out_ms=20.0,
                min_floor=8.0,
                click_head_ms=500.0,
+               click_tail_ms=200.0,
                click_max_ms=120.0,
                click_gap_ms=60.0):
     """Cut leading/trailing room noise, adaptively.
@@ -165,12 +166,13 @@ def smart_trim(data, samplerate,
     transient can beat it though, hence min_run_ms: the level has to stay up
     for 50ms before it counts as the start of the take.
 
-    The record button is on the PiBoy itself, so its click (and the release
-    of it, and the pop of the stream opening) lands in the first moments of
-    the take. Short isolated bursts in the first click_head_ms are ignored,
-    and the preroll is never allowed to reach back into them. A sound meant
-    to be recorded that close to pressing record is lost - the raw take still
-    has it. Clicks later in the take are always kept.
+    The record button is on the PiBoy itself and held while recording, so
+    its clicks land at the edges of the take: pressing it (and the pop of the
+    stream opening) in the first moments, releasing it at the very end. Short
+    isolated bursts in the first click_head_ms and the last click_tail_ms are
+    ignored, and the preroll/tail never reach into them. A sound meant to be
+    recorded that close to pressing or releasing the button is lost - the raw
+    take still has it. Clicks anywhere else in the take are kept.
 
     min_floor keeps the threshold off zero on digitally silent input.
     Returns (trimmed int16 array, True) or (original, False) if nothing in the
@@ -194,6 +196,11 @@ def smart_trim(data, samplerate,
     over, head_end = _drop_start_click(
         rms > threshold, windows(click_head_ms),
         windows(click_max_ms), windows(click_gap_ms))
+    # The same check on the reversed mask finds the release click at the end
+    reversed_over, tail_len = _drop_start_click(
+        over[::-1], windows(click_tail_ms),
+        windows(click_max_ms), windows(click_gap_ms))
+    over = reversed_over[::-1]
 
     loud = _sustained(over, windows(min_run_ms))
     if loud.size == 0:
@@ -203,6 +210,8 @@ def smart_trim(data, samplerate,
     end = int((loud[-1] + 1) * win + samplerate * tail_ms / 1000.0)
     start = max(0, start, head_end * win)
     end = min(len(data), end)
+    if tail_len:
+        end = min(end, (len(over) - tail_len) * win)
     if end - start < win:
         return data, False
 

@@ -6,12 +6,24 @@ from pygame.locals import *
 
 from config import asset
 
+
+def load_image(path):
+    """Load an image converted to the display's pixel format. Unconverted
+    images are converted again on every blit, which is slow on the Pi -
+    and drawing time is time the audio thread may be waiting for the GIL."""
+    image = pygame.image.load(path)
+    try:
+        return image.convert_alpha()
+    except pygame.error:        # no display yet
+        return image
+
+
 class Button(pygame.sprite.Sprite):
     def __init__(self, position, on_img, off_img):
         self.pressed = False
         self.position = position
-        self.off_image = pygame.image.load(off_img)
-        self.on_image = pygame.image.load(on_img)
+        self.off_image = load_image(off_img)
+        self.on_image = load_image(on_img)
         pygame.sprite.Sprite.__init__(self)
         self.set_state(False)
 
@@ -51,12 +63,11 @@ class ListView():
 
     def draw(self, screen):
         for txt in self.texts:
-            txt.render()
             txt.draw(screen)
 
     def set_strings(self, strings):
         for i, text in enumerate(self.texts):
-            text.text = strings[i]
+            text.set_text(strings[i])
 
     def highlight(self, index, high):
         self.texts[index].bgcolor = (200,20,20) if high else (250, 20, 20)
@@ -66,29 +77,37 @@ class Background:
         self.height = 480
         self.width = 640
         self.size = 25
-        self.image = pygame.image.load(asset('background.png'))
+        self.image = self._render()
+
+    def _render(self):
+        """Draw the line pattern and frame once; draw() only blits the result."""
+        surface = pygame.Surface((self.width, self.height))
+        surface.fill(Color('black'))
+        for i in range ( 0, self.width, self.size ):
+            pygame.draw.line ( surface, ( 0, 250-i/25, 0 ), ( 0, i ), ( i, self.height ), 1 )
+            pygame.draw.line ( surface, ( 200+i/15, 0, 0 ), ( i, 0 ), ( self.width, i ), 1 )
+        frame = pygame.image.load(asset('background.png'))
+        surface.blit(frame, frame.get_rect())
+        try:
+            return surface.convert()
+        except pygame.error:    # no display yet
+            return surface
 
     def draw(self, screen):
-        screen.fill(Color('black'))
-        for i in range ( 0, self.width, self.size ):
-            pygame.draw.line ( screen, ( 0, 250-i/25, 0 ), ( 0, i ), ( i, self.height ), 1 )
-            pygame.draw.line ( screen, ( 200+i/15, 0, 0 ), ( i, 0 ), ( self.width, i ), 1 )
-            #pygame.draw.line ( screen, ( 200-i/15, 0, 0 ), ( self.width - i, 0 ), ( 0, i ), 1 )
-            #pygame.draw.line ( screen, ( 0, 250-i/25, 0 ), ( i, self.height ), ( self.width, self.height - i ), 1 )
-        screen.blit(self.image, self.image.get_rect())
+        screen.blit(self.image, (0, 0))
 
 class Dpad():
     def __init__(self,pos, *args, **kwargs):
         self.pos = pos
-        self.bg_img = pygame.image.load(asset('cross_bg.png'))
-        self.up_on_img = pygame.image.load(asset('cross_up_on.png'))
-        self.up_off_img = pygame.image.load(asset('cross_up_off.png'))
-        self.down_on_img = pygame.image.load(asset('cross_down_on.png'))
-        self.down_off_img = pygame.image.load(asset('cross_down_off.png'))
-        self.left_on_img = pygame.image.load(asset('cross_left_on.png'))
-        self.left_off_img = pygame.image.load(asset('cross_left_off.png'))
-        self.right_on_img = pygame.image.load(asset('cross_right_on.png'))
-        self.right_off_img = pygame.image.load(asset('cross_right_off.png'))
+        self.bg_img = load_image(asset('cross_bg.png'))
+        self.up_on_img = load_image(asset('cross_up_on.png'))
+        self.up_off_img = load_image(asset('cross_up_off.png'))
+        self.down_on_img = load_image(asset('cross_down_on.png'))
+        self.down_off_img = load_image(asset('cross_down_off.png'))
+        self.left_on_img = load_image(asset('cross_left_on.png'))
+        self.left_off_img = load_image(asset('cross_left_off.png'))
+        self.right_on_img = load_image(asset('cross_right_on.png'))
+        self.right_off_img = load_image(asset('cross_right_off.png'))
         DEFAULT_IMAGE_SIZE = (80,80)
         self.bg_img = pygame.transform.scale(self.bg_img, DEFAULT_IMAGE_SIZE)
         self.up_on_img = pygame.transform.scale(self.up_on_img, DEFAULT_IMAGE_SIZE)

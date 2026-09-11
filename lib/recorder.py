@@ -11,12 +11,12 @@ import numpy as np
 
 import config
 
-try:
-    import sounddevice as sd
-    SD_ERROR = None
-except Exception as e:  # ImportError, or PortAudio missing
-    sd = None
-    SD_ERROR = str(e)
+# sounddevice is imported on first use, not at startup: importing it
+# initialises PortAudio, which the playback side of the app has no business
+# depending on. See _load_sounddevice().
+sd = None
+SD_ERROR = None
+_sd_tried = False
 
 INT16_MAX = 32768.0
 CLIP_LEVEL = 32700
@@ -25,14 +25,26 @@ CLIP_LEVEL = 32700
 _EXCLUDE = ('bcm2835', 'vc4', 'hdmi', 'dummy', 'monitor', 'loopback', 'null')
 
 
+def _load_sounddevice():
+    global sd, SD_ERROR, _sd_tried
+    if not _sd_tried:
+        _sd_tried = True
+        try:
+            import sounddevice
+            sd = sounddevice
+        except Exception as e:  # ImportError, or PortAudio missing
+            SD_ERROR = str(e)
+    return sd
+
+
 def available():
-    return sd is not None
+    return _load_sounddevice() is not None
 
 
 def find_input_device(preferred=None):
     """Resolve a device to (index, name). preferred may be an index, a name
     substring, or None for autodetect. Returns (None, reason) on failure."""
-    if sd is None:
+    if _load_sounddevice() is None:
         return None, "sounddevice not installed"
 
     try:
