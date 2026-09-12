@@ -23,7 +23,9 @@ right away. See [Recording](#recording) below.
 **Hold START** instead and the play screen appears for as long as you hold it:
 pick another preset, play another sample, and when you let go you are back on
 the screen you came from, without a menu. That is the quick way to change the
-sample that pitch mode plays.
+sample that pitch mode plays. Holding **SELECT** while pressing a sample
+button picks it silently - it is not played, only remembered, so you can set
+up the next pitch-mode sample without anyone hearing it.
 
 The menu always opens with **Playback** picked - so tapping **START** twice
 always takes you back to playback. Pick an entry with UP / DOWN and open it
@@ -48,8 +50,8 @@ The menu can't be opened while a recording is running - stop it first.
 | LEFT / RIGHT | previous / next preset |
 | UP / DOWN | page through the samples of the preset (6 per page) |
 | SELECT | stop all samples |
+| SELECT + sample button | pick that sample for pitch mode without playing it |
 | START | tap: open the menu   hold: peek at the play screen |
-| START + SELECT | quit |
 
 ### Pitch mode
 
@@ -66,12 +68,23 @@ plays the sample faster and therefore shorter.
 | START | tap: open the menu   hold: peek at the play screen |
 
 The scales are chromatic (all half tones), major, minor, dorian, mixolydian,
-major and minor pentatonic, blues and whole tone. The labels show each
+major and minor pentatonic, blues, whole tone and octave - the last one jumps
+a full octave per button, so the six buttons span five octaves. The labels show each
 button's distance in half tones from the original sample, so `+0 +2 +4 +5 +7
 +9` is a major scale on the sample's own pitch.
 
-Like on the play screen, a new note cuts off the one before it. Only the
-first 10 seconds of a sample are pitched.
+Like on the play screen, a new note cuts off the one before it. The button
+of the note that is sounding stays pressed while you hear it - it pops out
+when the note ends, when you play another one, when you press SELECT, or when
+you leave the screen. Moving the root with UP / DOWN moves that mark along
+with it, so the pressed button always sits on the note you are hearing.
+
+Samples are pitched in full, whatever their length. Pitching works without
+time stretching, so a note above the root is shorter than the original and a
+note below it is longer - the same as on an old hardware sampler. Each note
+is a full copy in memory, so for samples longer than 30 seconds the notes are
+built when you press them instead of all six in advance; the first press of
+each note then takes a moment.
 
 ## Folder structure
 
@@ -89,7 +102,7 @@ Samplemania is built to be played live, so it protects itself:
 
 - `Samplemania.py` is only a launcher. It runs the app, and if the app ever
   crashes or freezes it is restarted within a few seconds - back on the preset
-  and page you were on. Only quitting with **START + SELECT** really exits.
+  and page you were on. Only quitting through the menu (**Exit**) really exits.
 - A watchdog notices a frozen app (no reaction for 8 seconds) and triggers
   that restart.
 - Everything noteworthy - errors, slow frames, freezes with the exact place
@@ -129,7 +142,6 @@ Open the menu with **START** and pick **Record** to reach the record screen:
 | SELECT | delete the picked take (asks first) |
 | B | cancel: while holding Z it throws the running take away, otherwise it cancels the delete |
 | START | tap: open the menu   hold: peek at the play screen |
-| START + SELECT | quit |
 
 While recording, a level meter shows the input level and a timer shows the
 length of the take (max 5 minutes, `MAX_RECORD_SECONDS` in `lib/config.py`).

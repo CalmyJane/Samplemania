@@ -24,6 +24,14 @@ def stop_all_channels():
         mixer.stop()
 
 
+def clear_buttons(app):
+    """All buttons out and no row highlighted. Called when a screen is entered
+    or left so nothing stays lit from the screen before."""
+    for i in range(6):
+        app.buttonrow.set_button(i, False)
+        app.presetview.highlight(i, False)
+
+
 def stop_or_fade(fadetime):
     """SELECT: stop everything, or fade it out over fadetime ms.
 
@@ -43,6 +51,7 @@ class Mode:
     so animated screens can redraw."""
 
     frame_timeout = None
+    dirty = False           # set when the screen changed without a button event
 
     def __init__(self, app):
         self.app = app
@@ -89,6 +98,10 @@ class PlayMode(Mode):
 
     def enter(self):
         self.app.update_presetview()
+        clear_buttons(self.app)
+
+    def exit(self):
+        clear_buttons(self.app)
 
     def draw(self, screen):
         app = self.app
@@ -103,7 +116,12 @@ class PlayMode(Mode):
         self.app.buttonrow.set_button(button_index, pressed)
         self.app.presetview.highlight(list_index, pressed)
         if pressed:
-            sample = self.app.activepreset.play_sample(list_index, self.app.channels[list_index])
+            if self.app.input.select:
+                # SELECT held: pick the sample silently, e.g. to pitch it -
+                # no sound, so it can be done in the middle of a performance
+                sample = self.app.activepreset.get_sample(list_index)
+            else:
+                sample = self.app.activepreset.play_sample(list_index, self.app.channels[list_index])
             if sample is not None:
                 self.app.last_sample = sample       # pitch mode plays this one
 
@@ -154,12 +172,17 @@ class PitchMode(Mode):
 
     frame_timeout = None
 
+    # which button belongs to which note of the scale (note index -> button)
+    NOTE_BUTTONS = {0: 0, 1: 2, 2: 4, 3: 1, 4: 3, 5: 5}
+
     def __init__(self, app):
         Mode.__init__(self, app)
         self.engine = pitch.PitchEngine()
         self.scale = 0              # index into pitch.SCALES
         self.root = 0               # in steps of that scale
         self.notes = [0] * 6        # semitone offset per button
+        self.lit = None             # note index shown as pressed
+        self.playing = None         # (channel, semitones) of the sounding note
 
         self.lbl_scale = Text("", (100, 150), 50, Color('white'), None)
         self.lbl_sample = Text("", (100, 200), 22, (180, 180, 180),
@@ -168,6 +191,9 @@ class PitchMode(Mode):
     ## LIFECYCLE ##
 
     def enter(self):
+        clear_buttons(self.app)
+        self.lit = None
+        self.playing = None
         sample = self.app.last_sample
         if sample is None:
             self.engine.set_source(None)
@@ -176,6 +202,31 @@ class PitchMode(Mode):
                 sample.load()
             self.engine.set_source(sample.sound, sample.get_name())
         self._refresh()
+
+    def exit(self):
+        # the note may keep sounding, but the screen it was lit on is gone
+        clear_buttons(self.app)
+        self.lit = None
+        self.playing = None
+
+    def tick(self):
+        # the lamp shows what is sounding, so it goes out when the note ends
+        if self.playing is not None and not self.app.channels[self.playing[0]].get_busy():
+            self.playing = None
+            self._light(None)
+
+    def _light(self, note_index):
+        """Show this note as the pressed button (None = nothing pressed)."""
+        if note_index == self.lit:
+            return
+        if self.lit is not None:
+            self.app.buttonrow.set_button(self.NOTE_BUTTONS[self.lit], False)
+            self.app.presetview.highlight(self.lit, False)
+        self.lit = note_index
+        if note_index is not None:
+            self.app.buttonrow.set_button(self.NOTE_BUTTONS[note_index], True)
+            self.app.presetview.highlight(note_index, True)
+        self.dirty = True           # the main loop redraws for this
 
     def _refresh(self):
         """Work out the six notes, relabel and prepare them in the background."""
@@ -189,21 +240,29 @@ class PitchMode(Mode):
         else:
             self.lbl_sample.set_text("PLAY A SAMPLE ON THE PLAY SCREEN FIRST")
             self.app.presetview.set_strings(["-"] * 6)
+        # the sounding note keeps its lamp, on whichever button it now sits
+        if self.playing is not None and self.playing[1] in self.notes:
+            self._light(self.notes.index(self.playing[1]))
+        else:
+            self._light(None)
 
     ## INPUT ##
 
-    def _hit(self, button_index, note_index, pressed):
-        self.app.buttonrow.set_button(button_index, pressed)
-        self.app.presetview.highlight(note_index, pressed)
-        if pressed and self.engine.ready:
-            self.engine.play(self.notes[note_index], self.app.channels[note_index])
+    def _hit(self, note_index, pressed):
+        # Releasing does not clear the lamp: it follows the sound, not the
+        # finger, so a long note stays marked while it plays.
+        if not pressed or not self.engine.ready:
+            return
+        self.engine.play(self.notes[note_index], self.app.channels[note_index])
+        self.playing = (note_index, self.notes[note_index])
+        self._light(note_index)
 
-    def on_a(self, pressed): self._hit(5, 5, pressed)
-    def on_b(self, pressed): self._hit(3, 4, pressed)
-    def on_c(self, pressed): self._hit(1, 3, pressed)
-    def on_x(self, pressed): self._hit(4, 2, pressed)
-    def on_y(self, pressed): self._hit(2, 1, pressed)
-    def on_z(self, pressed): self._hit(0, 0, pressed)
+    def on_a(self, pressed): self._hit(5, pressed)
+    def on_b(self, pressed): self._hit(4, pressed)
+    def on_c(self, pressed): self._hit(3, pressed)
+    def on_x(self, pressed): self._hit(2, pressed)
+    def on_y(self, pressed): self._hit(1, pressed)
+    def on_z(self, pressed): self._hit(0, pressed)
 
     def on_up(self, pressed):
         if pressed:
@@ -228,6 +287,8 @@ class PitchMode(Mode):
     def on_select(self, pressed):
         if pressed:
             stop_or_fade(self.app.fadetime)
+            self.playing = None
+            self._light(None)
 
     def on_red_buttons(self, pressed):
         # Fires before the note's own handler, so every note cuts off the one
@@ -669,9 +730,9 @@ class Menu(Mode):
             self.close()
 
     def on_start(self, pressed):
-        # START never answers a confirmation - only A does, so pressing START
-        # a few times can't quit by accident. START + SELECT is the quit combo.
-        if pressed and not self.confirm and not self.app.input.select:
+        # START never answers a confirmation - only A does, so tapping START
+        # a few times can't quit by accident.
+        if pressed and not self.confirm:
             self._choose()
 
     ## DRAW ##

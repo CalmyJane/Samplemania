@@ -24,7 +24,8 @@ prefer the boring, robust solution over a clever one.
 - **Errors are logged, not fatal:** button handlers, drawing and ticks run inside
   try/except in `lib/app.py` and log to `samplemania.log`. Don't add code paths outside that.
 - `Samplemania.py` is a launcher that restarts the app (`lib/app.py`) after a crash or
-  hang and restores preset/page. START + SELECT writes a quit marker so it doesn't restart.
+  hang and restores preset/page. Quitting through the menu (Exit) writes a quit marker so
+  it doesn't restart.
 - Keep playback independent of optional features: e.g. `sounddevice`/PortAudio is only
   imported when the record screen is opened.
 - Test what can be tested offline before handing over: the stress test pattern (fake
@@ -77,7 +78,11 @@ also be copied to the PiBoy.
 ## Screens and the menu
 
 Each screen is a `Mode` subclass in `lib/modes.py` (button handlers `on_a`, `on_up`, ...,
-plus `enter`/`exit`/`tick`/`draw`). START opens the `Menu`, an overlay drawn on top of
+plus `enter`/`exit`/`tick`/`draw`). The screen is only redrawn after a button event, so a
+mode that changes its own display without one (a note ending in `tick`, say) must set
+`self.dirty = True`; the main loop redraws once for it and clears the flag. Shared
+widgets (`app.buttonrow`, `app.presetview`) belong to whichever mode is active, so call
+`clear_buttons(app)` in `enter`/`exit` rather than leaving something lit behind. START opens the `Menu`, an overlay drawn on top of
 the active mode - the mode is not exited while the menu is open. The menu always opens
 with the first entry (Playback) picked; A or START selects, B closes, so START, START
 always returns to playback. To add a feature: write a new `Mode`, create it in `App.run()`
@@ -89,4 +94,5 @@ START belongs to `App.on_start_button`, not to the modes: a tap opens the menu o
 release, holding it past `config.MENU_HOLD_SECONDS` switches to the play screen until
 it is released, then returns to the screen it started from (`App.peek_mode`). A new mode
 must therefore not define `on_start`; if it may not be left right now (recording),
-override `start_allowed()` and set a status message there. START + SELECT is always quit.
+override `start_allowed()` and set a status message there. Quitting is the menu's Exit
+entry (`App.quit`); there is no button combo for it.

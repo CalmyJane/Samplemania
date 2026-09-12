@@ -99,8 +99,6 @@ class App:
         peek started from - without opening the menu.
         """
         if pressed:
-            if self.input.select:       # START + SELECT is the quit combo
-                return
             if self.start_held_at is not None:
                 return              # key repeat while held: don't restart the clock
             if not self.mode.start_allowed():
@@ -112,7 +110,7 @@ class App:
         if self.peek_mode is not None:
             self.set_mode(self.peek_mode)
             self.peek_mode = None
-        elif held is not None and not self.input.select:
+        elif held is not None:
             self.menu.open()
 
     def check_start_hold(self):
@@ -221,7 +219,10 @@ class App:
         while App.running:
             self.watchdog.feed()
 
-            if redraw:
+            # modes set .dirty when they change something on their own
+            # (a note ending, say), without a button event to trigger a redraw
+            if redraw or self.mode.dirty:
+                self.mode.dirty = False
                 try:
                     self.draw()
                 except Exception:
@@ -244,9 +245,6 @@ class App:
             redraw = events > 0 or self.mode.frame_timeout is not None
             if self.check_start_hold():
                 redraw = True
-
-            if self.input.start and self.input.select:
-                App.running = False
 
             try:
                 self.mode.tick()
@@ -271,7 +269,7 @@ class App:
         App.running = False
 
     def shutdown(self):
-        """Quit on purpose (START + SELECT)."""
+        """Quit on purpose (the menu's Exit entry)."""
         try:
             open(config.QUIT_MARKER, "w").close()
         except (IOError, OSError):

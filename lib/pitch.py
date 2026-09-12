@@ -30,11 +30,19 @@ SCALES = [
     ("PENTA MINOR", [0, 3, 5, 7, 10]),
     ("BLUES", [0, 3, 5, 6, 7, 10]),
     ("WHOLE TONE", [0, 2, 4, 6, 8, 10]),
+    ("OCTAVE", [0]),            # one degree, so every step is a full octave
 ]
 
-# Only this much of the sample is pitched - a five minute recording would
-# otherwise eat RAM and CPU for every note.
-MAX_SECONDS = 10.0
+# A pitched note is a full copy of the sample in RAM (44.1kHz stereo 16bit is
+# about 176KB per second), so the cache is bounded by the amount of audio it
+# holds rather than by a length limit on the sample. The note just built is
+# always kept, even when it is bigger than the whole budget by itself.
+MAX_CACHE_SECONDS = 240.0
+
+# A note can only get so long: pitched an octave down a sample is twice as
+# long, and the OCTAVE scale reaches five octaves. Past this the copy is cut
+# off, so one deep note can't eat all the memory.
+MAX_NOTE_SECONDS = 120.0
 
 # Frames per work chunk. Small enough that one chunk holds the GIL for a
 # few milliseconds only, so the audio thread keeps its buffers filled.
@@ -42,6 +50,10 @@ CHUNK = 40000
 
 # Pitched copies kept per sample (six buttons plus room to move the root)
 MAX_CACHED = 24
+
+# Longer samples are not prepared ahead: six copies of a long take would only
+# push each other out of the cache again. Their notes are built when pressed.
+PREPARE_MAX_SECONDS = 30.0
 
 
 def step_semitones(intervals, step):
@@ -61,6 +73,7 @@ class _Job:
         self.data = data
         self.ratio = 2.0 ** (semitones / 12.0)
         frames = max(1, int(len(data) / self.ratio))
+        frames = min(frames, int(MAX_NOTE_SECONDS * 44100))
         shape = (frames, data.shape[1]) if data.ndim > 1 else (frames,)
         self.out = np.empty(shape, dtype=np.int16)
         self.pos = 0
@@ -92,8 +105,10 @@ class PitchEngine:
     def __init__(self):
         self.source = None          # the original Sound
         self.name = ""
+        self.source_seconds = 0.0
         self._data = None           # numpy copy of the source
-        self._cache = {}            # semitones -> Sound
+        self._cache = {}            # semitones -> Sound, oldest use first
+        self._cached_seconds = 0.0
         self._lock = threading.Lock()
         self._wanted = []           # semitones still to prepare, in order
         self._cond = threading.Condition()
@@ -113,9 +128,11 @@ class PitchEngine:
             for pitched in self._cache.values():
                 graveyard.add(pitched)
             self._cache = {}
+            self._cached_seconds = 0.0
             self.source = sound
             self.name = name
             self._data = None
+            self.source_seconds = 0.0
             if sound is not None:
                 try:
                     data = sndarray.array(sound)
@@ -123,8 +140,8 @@ class PitchEngine:
                     log.error("cannot read sample for pitching: %s", e)
                     self.source = None
                     return
-                limit = int(MAX_SECONDS * 44100)
-                self._data = data[:limit] if len(data) > limit else data
+                self._data = data
+                self.source_seconds = sound.get_length()
 
     @property
     def ready(self):
@@ -135,6 +152,11 @@ class PitchEngine:
     def want(self, semitones):
         """Ask the worker to prepare these pitches (in this order)."""
         if not self.ready:
+            return
+        if self.source_seconds > PREPARE_MAX_SECONDS:
+            # Nothing to gain: they would evict each other while being built
+            log.info("%s is %.0fs long - pitching it note by note when pressed",
+                     self.name, self.source_seconds)
             return
         with self._lock:
             todo = [s for s in semitones if s not in self._cache and s != 0]
@@ -157,6 +179,10 @@ class PitchEngine:
         with self._lock:
             sound = self._cache.get(semitones)
             data = self._data
+            if sound is not None:
+                # keep it fresh: the oldest note is the first one dropped
+                del self._cache[semitones]
+                self._cache[semitones] = sound
         if sound is not None:
             return sound
 
@@ -179,9 +205,15 @@ class PitchEngine:
                 graveyard.add(sound)
                 return
             self._cache[semitones] = sound
-            while len(self._cache) > MAX_CACHED:
+            self._cached_seconds += sound.get_length()
+            # Drop the notes used longest ago until the budget fits again. The
+            # one just built always stays, however long the sample is.
+            while len(self._cache) > 1 and (self._cached_seconds > MAX_CACHE_SECONDS
+                                            or len(self._cache) > MAX_CACHED):
                 oldest = next(iter(self._cache))
-                graveyard.add(self._cache.pop(oldest))
+                dropped = self._cache.pop(oldest)
+                self._cached_seconds -= dropped.get_length()
+                graveyard.add(dropped)
 
     ## WORKER ##
 

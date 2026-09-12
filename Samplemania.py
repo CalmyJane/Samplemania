@@ -3,8 +3,8 @@
 The app itself (lib/app.py) runs in a child process. If it crashes, or hangs
 and gets killed by its watchdog, it is started again straight away and comes
 back on the preset and page it was on - during a performance a problem costs
-a few seconds instead of the show. Quitting with START + SELECT ends the app
-normally and the launcher with it.
+a few seconds instead of the show. Quitting through the menu (Exit) ends the
+app normally and the launcher with it.
 
 Helper modules live in lib/ so this is the only .py EmulationStation lists.
 """

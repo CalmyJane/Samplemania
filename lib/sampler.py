@@ -154,15 +154,20 @@ class Preset:
         else:
             self.page = (self.page + 1) % self.numpages
 
+    def get_sample(self, index):
+        """The sample on button `index` of the current page, or None."""
+        sample_idx = index + self.page * SAMPLES_PER_PAGE
+        if sample_idx < len(self.samples):
+            return self.samples[sample_idx]
+        return None
+
     def play_sample(self, index, channel):
         """Play the sample on button `index` of the current page and return
         it, so the app can remember what was played last (pitch mode)."""
-        sample_idx = index + self.page * SAMPLES_PER_PAGE
-        if sample_idx < len(self.samples):
-            sample = self.samples[sample_idx]
+        sample = self.get_sample(index)
+        if sample is not None:
             sample.play(channel)
-            return sample
-        return None
+        return sample
 
     def get_names(self):
         names = []
