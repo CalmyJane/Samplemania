@@ -16,6 +16,27 @@ IDLE_WAIT = 0.5
 # the play screen until it is released again.
 MENU_HOLD_SECONDS = 0.35
 
+# Look of the screen.
+# The background lines drift and shimmer. The frames are pre-rendered once at
+# startup (640x480 each, so UI_ANIM_FRAMES x ~1.2MB of RAM) and the play
+# screen then redraws at UI_ANIM_FPS. Set UI_ANIM_FPS to 0 for a still
+# background: no extra memory, and the screen is only drawn after a button
+# press again. Turn it off first if playback ever sounds less than solid.
+UI_ANIM_FPS = 10
+UI_ANIM_FRAMES = 10
+
+# How the six samples are shown: "boxes" (laid out like the buttons) or
+# "list" (six wide rows). The menu switches between them while running.
+UI_STYLE = "list"
+
+# Seconds the title screen stays up at startup before the play screen. Any
+# button skips it; 0 turns it off. It can also be opened from the menu.
+SPLASH_SECONDS = 3.0
+
+# Draw the old button and d-pad pictures in the corner. Only useful to see
+# whether a button on the device arrives at all.
+SHOW_DEBUG_PADS = False
+
 # Runtime files. /dev/shm is RAM: no SD card writes, gone after a reboot.
 RUN_DIR = "/dev/shm" if os.path.isdir("/dev/shm") else APP_DIR
 # Current preset and page, so an app restarted by the launcher comes back there

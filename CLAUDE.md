@@ -81,14 +81,20 @@ Each screen is a `Mode` subclass in `lib/modes.py` (button handlers `on_a`, `on_
 plus `enter`/`exit`/`tick`/`draw`). The screen is only redrawn after a button event, so a
 mode that changes its own display without one (a note ending in `tick`, say) must set
 `self.dirty = True`; the main loop redraws once for it and clears the flag. Shared
-widgets (`app.buttonrow`, `app.presetview`) belong to whichever mode is active, so call
+widgets (`app.presetview`, `app.header`) belong to whichever mode is active, so call
 `clear_buttons(app)` in `enter`/`exit` rather than leaving something lit behind. START opens the `Menu`, an overlay drawn on top of
 the active mode - the mode is not exited while the menu is open. The menu always opens
 with the first entry (Playback) picked; A or START selects, B closes, so START, START
 always returns to playback. To add a feature: write a new `Mode`, create it in `App.run()`
 in `lib/app.py` and add a `(label, mode)` entry to the menu list there. An entry can also
 be `(label, function)` for an action; use `menu.ask(message, on_yes)` for a yes/no
-confirmation (A = yes, B = no, START never confirms).
+confirmation (A = yes, B = no, START never confirms). The label may be a function
+too, for an entry that shows a setting ("Style: BOXES") - it is asked for its text
+on every draw.
+
+The six sample slots are one widget (`PiBoyUI.SampleGrid`) with two layouts,
+`BOXES` and `LIST`; a mode fills it with `set_strings` and marks slots with
+`highlight` / `set_playing` / `set_loading` and never cares which layout is on.
 
 START belongs to `App.on_start_button`, not to the modes: a tap opens the menu on
 release, holding it past `config.MENU_HOLD_SECONDS` switches to the play screen until

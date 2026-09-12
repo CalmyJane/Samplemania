@@ -15,7 +15,7 @@ from stability import log
 from PiBoyUI import *
 from PiBoyInput import PBInput
 from sampler import Preset, Loader, graveyard
-from modes import PlayMode, PitchMode, RecordMode, Menu
+from modes import SplashMode, PlayMode, PitchMode, RecordMode, Menu
 
 # A frame (input handling + drawing) slower than this gets logged
 SLOW_FRAME = 0.05
@@ -48,9 +48,8 @@ class App:
 
         App.bg = Background()
         App.running = True
-        self.bgcounter = 0
         self.input = PBInput()
-        self.dpad = Dpad((77, 220))
+        self.debugpads = None       # created in run() when config asks for it
 
         # Every button is routed to whichever mode is active (or the menu)
         for name in ('A', 'B', 'C', 'X', 'Y', 'Z', 'left', 'right', 'up', 'down',
@@ -62,6 +61,11 @@ class App:
         self.menu = None
         self.activepreset = None
         self.last_sample = None     # last sample played, pitch mode uses it
+        # the file each channel was last started with, so the glow can follow
+        # the sample through page and preset changes. By path, not by object:
+        # leaving a preset throws its samples away, and coming back builds new
+        # ones for the same files.
+        self.playing = [None] * 6
         self.start_held_at = None   # when START went down, None while it is up
         self.peek_mode = None       # mode to return to after peeking at playback
         self.loader = Loader()
@@ -173,14 +177,15 @@ class App:
         config.ensure_dirs()
         self.loader.start()
 
-        # Initialize Button Row of 6 buttons
-        self.buttonrow = ButtonRow((50, 350))
+        # The screen: a shallow header and six big sample tiles below it.
+        self.header = Header()
+        self.style = config.UI_STYLE
+        self.presetview = SampleGrid((10, HEADER_H + 8, 620,
+                                      480 - HEADER_H - 18), self.style)
+        if config.SHOW_DEBUG_PADS:
+            self.debugpads = DebugPads()
 
-        # Initialize Preset View
-        self.presetview = ListView(pos=(220, 220), fontsize=40, spacing=0)
-
-        self.presetlabel = Text("Preset1", (100, 150), 60, Color('white'), None)
-
+        self.restore_style()
         self.scan_presets()
         self.currpresetnum = 0
         if not self.restore_state():
@@ -190,16 +195,23 @@ class App:
         self.playmode = PlayMode(self)
         self.pitchmode = PitchMode(self)
         self.recordmode = RecordMode(self)
+        self.splashmode = SplashMode(self)
 
         # Main menu (START). Add new features here as (label, mode), or
-        # (label, function) for an action.
+        # (label, function) for an action. A callable label is asked for its
+        # text every time the menu is drawn, for entries showing a setting.
         self.menu = Menu(self, [
             ("Playback", self.playmode),
             ("Pitch", self.pitchmode),
             ("Record", self.recordmode),
+            (self.style_label, self.toggle_style),
+            ("Title", self.show_splash),
             ("Exit", self.ask_exit),
         ])
+
         self.set_mode(self.playmode)
+        if config.SPLASH_SECONDS > 0:
+            self.splashmode.show(self.playmode, config.SPLASH_SECONDS)
 
         self.main_loop()
         self.shutdown()
@@ -218,6 +230,14 @@ class App:
         last_slow_log = 0.0
         while App.running:
             self.watchdog.feed()
+
+            # The background loops through its pre-rendered frames and the
+            # glow of a sounding tile breathes - both are pure state here,
+            # the modes decide (frame_timeout) whether they are drawn.
+            now = time.time()
+            if self.bg.tick(now):
+                redraw = True
+            self.presetview.tick(now)
 
             # modes set .dirty when they change something on their own
             # (a note ending, say), without a button event to trigger a redraw
@@ -257,6 +277,23 @@ class App:
             if took > SLOW_FRAME and started - last_slow_log > 5.0:
                 last_slow_log = started
                 log.warning("slow frame: %.0fms for %d events", took * 1000, events)
+
+    ## SETTINGS ##
+
+    def style_label(self):
+        return "Style: {0}".format(self.style.upper())
+
+    def toggle_style(self):
+        """Menu entry: switch the six slots between boxes and a list."""
+        self.style = LIST if self.style == BOXES else BOXES
+        self.presetview.set_style(self.style)
+        self.save_state()
+        log.info("display style %s", self.style)
+
+    def show_splash(self):
+        """Menu entry: the title screen, until a button is pressed."""
+        self.menu.close()
+        self.splashmode.show(self.mode, 0)
 
     def ask_exit(self):
         """Menu entry: quit Samplemania after a yes/no confirmation."""
@@ -318,9 +355,23 @@ class App:
             return
         try:
             with open(config.STATE_PATH, "w") as f:
-                f.write("{0}\n{1}\n".format(self.activepreset.path, self.activepreset.page))
+                f.write("{0}\n{1}\n{2}\n".format(self.activepreset.path,
+                                                 self.activepreset.page,
+                                                 self.style))
         except (IOError, OSError):
             pass
+
+    def restore_style(self):
+        """The display style survives a restart by the launcher. The state
+        file lives in RAM, so after a reboot config.UI_STYLE applies again."""
+        try:
+            with open(config.STATE_PATH) as f:
+                style = f.read().split("\n")[2].strip()
+        except (IOError, OSError, IndexError):
+            return
+        if style in (BOXES, LIST):
+            self.style = style
+            self.presetview.set_style(style)
 
     def restore_state(self):
         """After a restart by the launcher, go back to the saved preset and
@@ -354,6 +405,44 @@ class App:
 
     def update_presetview(self):
         self.presetview.set_strings(self.activepreset.get_names())
+        self.header.set_title(self.activepreset.name,
+                              "{0}/{1}".format(self.activepreset.page + 1,
+                                               self.activepreset.numpages))
+
+    def refresh_tiles(self):
+        """Keep the tiles in step with the mixer and the loader: a tile that
+        is sounding glows, one whose sample is not in RAM yet shows a dot.
+        Returns True when something changed, so the screen is redrawn.
+
+        The glow follows the sample, not the channel: a channel keeps playing
+        while you page or change preset, and the slot it started from then
+        holds a different sample - which must not light up. Come back to the
+        page it belongs to and it lights up again, as long as it still plays.
+        """
+        changed = False
+        preset = self.activepreset
+        for i in range(6):
+            sample = preset.get_sample(i) if preset is not None else None
+            loading = (sample is not None and sample.sound is None
+                       and not sample.failed)
+            if self.presetview.set_loading(i, loading):
+                changed = True
+
+            if not self.channels[i].get_busy():
+                self.playing[i] = None
+            playing = sample is not None and self.playing[i] == sample.path
+            if self.presetview.set_playing(i, playing):
+                changed = True
+        return changed
+
+    def started_playing(self, index, sample):
+        """A sample was just started on the channel of slot `index`."""
+        self.playing[index] = sample.path if sample is not None else None
+
+    def set_button(self, index, pressed):
+        """Debug button pictures, when they are switched on."""
+        if self.debugpads is not None:
+            self.debugpads.buttonrow.set_button(index, pressed)
 
     def change_page(self, up):
         self.activepreset.change_page(up)
@@ -370,7 +459,6 @@ class App:
     def set_current_preset(self, index):
         self.currpresetnum = index
         self.load_preset(self.presets[self.currpresetnum])
-        self.presetlabel.set_text(self.activepreset.name)
 
 
 def main():

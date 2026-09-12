@@ -1,6 +1,7 @@
 """Screen modes. The App owns the hardware and shared widgets, each mode owns
 its own input handling and drawing."""
 
+import math
 import os
 import time
 
@@ -12,7 +13,13 @@ import config
 import pitch
 import recorder
 import sample_edit
-from PiBoyUI import Text, Meter, ConfirmDialog
+from PiBoyUI import (Text, Meter, ConfirmDialog, Panel, Splash, HEADER_H,
+                     GB, GB_TEXT, GB_BRIGHT, split_number)
+
+# The play and pitch screens redraw at the speed of the background animation.
+# With the animation switched off they go back to drawing only when something
+# changed, which is the cheapest the app can be.
+ANIM_TIMEOUT = (1.0 / config.UI_ANIM_FPS) if config.UI_ANIM_FPS > 0 else None
 from sampler import graveyard
 
 
@@ -25,11 +32,11 @@ def stop_all_channels():
 
 
 def clear_buttons(app):
-    """All buttons out and no row highlighted. Called when a screen is entered
-    or left so nothing stays lit from the screen before."""
+    """No tile lit and no button picture pressed. Called when a screen is
+    entered or left, so nothing stays lit from the screen before."""
+    app.presetview.clear()
     for i in range(6):
-        app.buttonrow.set_button(i, False)
-        app.presetview.highlight(i, False)
+        app.set_button(i, False)
 
 
 def stop_or_fade(fadetime):
@@ -91,29 +98,93 @@ class Mode:
     def on_red_buttons(self, pressed): pass
 
 
-class PlayMode(Mode):
-    """The original Samplemania screen: 6 buttons, 6 channels, paged presets."""
+class SplashMode(Mode):
+    """The title screen. Shown at startup for config.SPLASH_SECONDS and from
+    the menu; any button ends it and goes back to where it came from.
 
-    frame_timeout = None
+    It draws its background live rather than from the pre-rendered frames, so
+    the pattern keeps evolving instead of looping every second. That is only
+    affordable here: nothing is playing while the title is up.
+    """
+
+    frame_timeout = ANIM_TIMEOUT or 1.0 / 15.0
+
+    def __init__(self, app):
+        Mode.__init__(self, app)
+        self.splash = Splash()
+        self.back = None            # screen to return to
+        self.until = 0.0
+
+    def show(self, back, seconds):
+        """Open the title screen over `back` for `seconds` (0 = until a
+        button is pressed)."""
+        self.back = back
+        self.until = time.time() + seconds if seconds > 0 else 0.0
+        self.app.set_mode(self)
 
     def enter(self):
+        clear_buttons(self.app)
+
+    def tick(self):
+        if self.until and time.time() >= self.until:
+            self._done()
+
+    def _done(self):
+        back, self.back = self.back, None
+        if back is not None and self.app.mode is self:
+            self.app.set_mode(back)
+
+    def draw(self, screen):
+        self.splash.draw(screen, self.app.bg, time.time())
+
+    # any button ends it - including START, which is why it is not allowed to
+    # open the menu while the title is up
+    def _any(self, pressed):
+        if pressed:
+            self._done()
+
+    on_a = on_b = on_c = on_x = on_y = on_z = _any
+    on_up = on_down = on_left = on_right = _any
+    on_select = on_left_shoulder = on_right_shoulder = _any
+
+    def start_allowed(self):
+        self._done()
+        return False
+
+
+class PlayMode(Mode):
+    """The main screen: six sample tiles, six channels, paged presets.
+
+    The tiles sit where the buttons sit (Z Y X over C B A), so pressing a
+    button lights the tile you were reading. Nothing else on the screen is
+    needed to know what is going on.
+    """
+
+    frame_timeout = ANIM_TIMEOUT
+
+    def enter(self):
+        self.app.header.set_tag("PLAY")
         self.app.update_presetview()
         clear_buttons(self.app)
 
     def exit(self):
         clear_buttons(self.app)
 
+    def tick(self):
+        # the glow follows the mixer, so a tile goes dark when its sample ends
+        if self.app.refresh_tiles():
+            self.dirty = True
+
     def draw(self, screen):
         app = self.app
-        app.dpad.set_values(app.input.up, app.input.down, app.input.left, app.input.right)
         app.bg.draw(screen)
-        app.dpad.draw(screen)
+        app.header.draw(screen)
         app.presetview.draw(screen)
-        app.buttonrow.draw(screen)
-        app.presetlabel.draw(screen)
+        if app.debugpads is not None:
+            app.debugpads.draw(screen, app)
 
     def _hit(self, button_index, list_index, pressed):
-        self.app.buttonrow.set_button(button_index, pressed)
+        self.app.set_button(button_index, pressed)
         self.app.presetview.highlight(list_index, pressed)
         if pressed:
             if self.app.input.select:
@@ -122,6 +193,7 @@ class PlayMode(Mode):
                 sample = self.app.activepreset.get_sample(list_index)
             else:
                 sample = self.app.activepreset.play_sample(list_index, self.app.channels[list_index])
+                self.app.started_playing(list_index, sample)
             if sample is not None:
                 self.app.last_sample = sample       # pitch mode plays this one
 
@@ -170,10 +242,14 @@ class PitchMode(Mode):
     of the current scale in the background.
     """
 
-    frame_timeout = None
+    frame_timeout = ANIM_TIMEOUT
 
     # which button belongs to which note of the scale (note index -> button)
     NOTE_BUTTONS = {0: 0, 1: 2, 2: 4, 3: 1, 4: 3, 5: 5}
+
+    # names for the semitone offsets, so the tiles read as notes and not as
+    # numbers. The sample itself is taken as C4, whatever it really is.
+    NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
     def __init__(self, app):
         Mode.__init__(self, app)
@@ -184,9 +260,10 @@ class PitchMode(Mode):
         self.lit = None             # note index shown as pressed
         self.playing = None         # (channel, semitones) of the sounding note
 
-        self.lbl_scale = Text("", (100, 150), 50, Color('white'), None)
-        self.lbl_sample = Text("", (100, 200), 22, (180, 180, 180),
-                               Color('black'), padding=4)
+    @classmethod
+    def note_name(cls, semitones):
+        return "{0}{1}".format(cls.NOTE_NAMES[semitones % 12],
+                               4 + int(math.floor(semitones / 12.0)))
 
     ## LIFECYCLE ##
 
@@ -220,11 +297,11 @@ class PitchMode(Mode):
         if note_index == self.lit:
             return
         if self.lit is not None:
-            self.app.buttonrow.set_button(self.NOTE_BUTTONS[self.lit], False)
+            self.app.set_button(self.NOTE_BUTTONS[self.lit], False)
             self.app.presetview.highlight(self.lit, False)
         self.lit = note_index
         if note_index is not None:
-            self.app.buttonrow.set_button(self.NOTE_BUTTONS[note_index], True)
+            self.app.set_button(self.NOTE_BUTTONS[note_index], True)
             self.app.presetview.highlight(note_index, True)
         self.dirty = True           # the main loop redraws for this
 
@@ -232,13 +309,18 @@ class PitchMode(Mode):
         """Work out the six notes, relabel and prepare them in the background."""
         name, intervals = pitch.SCALES[self.scale]
         self.notes = [pitch.step_semitones(intervals, self.root + i) for i in range(6)]
-        self.lbl_scale.set_text(name)
+        self.app.header.set_tag(name)
         if self.engine.ready:
-            self.lbl_sample.set_text("{0}   L/R scale   U/D root".format(self.engine.name[:22]))
-            self.app.presetview.set_strings(["{0:+d}".format(n) for n in self.notes])
+            # the number in front of the name belongs to the slot, not to
+            # the sample - the tiles show it in their corner
+            self.app.header.set_title(split_number(self.engine.name)[1],
+                                      self.note_name(self.notes[0]))
+            self.app.presetview.set_strings(
+                [self.note_name(n) for n in self.notes],
+                ["{0:+d}".format(n) for n in self.notes])
             self.engine.want(self.notes)
         else:
-            self.lbl_sample.set_text("PLAY A SAMPLE ON THE PLAY SCREEN FIRST")
+            self.app.header.set_title("PLAY A SAMPLE FIRST", "-")
             self.app.presetview.set_strings(["-"] * 6)
         # the sounding note keeps its lamp, on whichever button it now sits
         if self.playing is not None and self.playing[1] in self.notes:
@@ -300,13 +382,11 @@ class PitchMode(Mode):
 
     def draw(self, screen):
         app = self.app
-        app.dpad.set_values(app.input.up, app.input.down, app.input.left, app.input.right)
         app.bg.draw(screen)
-        app.dpad.draw(screen)
+        app.header.draw(screen)
         app.presetview.draw(screen)
-        app.buttonrow.draw(screen)
-        self.lbl_scale.draw(screen)
-        self.lbl_sample.draw(screen)
+        if app.debugpads is not None:
+            app.debugpads.draw(screen, app)
 
 
 class RecordMode(Mode):
@@ -317,7 +397,7 @@ class RecordMode(Mode):
     """
 
     frame_timeout = 1.0 / 30.0
-    VISIBLE = 3                 # take rows that fit under the meter
+    VISIBLE = 5                 # take rows that fit under the meter
     MIN_TAKE_SECONDS = 0.3      # shorter holds are a tap, not a take - discarded
 
     HELP1 = "hold Z record   A preview   SELECT delete"
@@ -328,7 +408,8 @@ class RecordMode(Mode):
         Mode.__init__(self, app)
         self.recorder = None        # created on first enter, see there
         self._preview_sound = None
-        self.meter = Meter((100, 180), size=(330, 18))
+        self.panel = Panel((10, HEADER_H + 8, 620, 480 - HEADER_H - 18))
+        self.meter = Meter((44, 122), size=(472, 26))
         self.status = ""
         self.last_info = ""
         self.confirm = None         # ConfirmDialog while asking to delete
@@ -340,14 +421,13 @@ class RecordMode(Mode):
 
         # Labels are built once and re-rendered only when their text changes.
         # Black backgrounds keep them readable over the background lines.
-        black = Color('black')
-        self.lbl_timer = Text("  0.0s", (492, 177), 30, (255, 120, 120), black, padding=4)
-        self.lbl_status = Text("", (100, 228), 26, (120, 255, 140), black, padding=4)
-        self.lbl_header = Text("", (100, 258), 22, (150, 150, 150), black, padding=4)
-        self.lbl_rows = [Text("", (100, 284 + i * 27), 26, (220, 220, 120), black, padding=4)
+        self.lbl_timer = Text("  0.0s", (74, 78), 40, (255, 120, 120), None, bold=True)
+        self.lbl_status = Text("", (44, 164), 28, (120, 255, 140), None, bold=True)
+        self.lbl_header = Text("", (44, 200), 24, (150, 150, 150), None, bold=True)
+        self.lbl_rows = [Text("", (44, 230 + i * 32), 30, (150, 150, 150), None, bold=True)
                          for i in range(self.VISIBLE)]
-        self.lbl_help1 = Text(self.HELP1, (100, 380), 24, (180, 180, 180), black, padding=4)
-        self.lbl_help2 = Text(self.HELP2, (100, 408), 24, (180, 180, 180), black, padding=4)
+        self.lbl_help1 = Text(self.HELP1, (44, 400), 24, (180, 180, 180), None)
+        self.lbl_help2 = Text(self.HELP2, (44, 428), 24, (180, 180, 180), None)
 
     ## LIFECYCLE ##
 
@@ -356,6 +436,7 @@ class RecordMode(Mode):
         # screen is actually used - a playback-only session never touches it.
         if self.recorder is None:
             self.recorder = recorder.Recorder()
+        self.app.header.set_tag("REC")
         # Nothing should be coming out of the speaker while a mic is open
         stop_all_channels()
         self.meter.reset()
@@ -394,6 +475,7 @@ class RecordMode(Mode):
         names.reverse()          # timestamped names, so this is newest first
         self.takes = names
 
+        self.app.header.set_title(config.RECORDINGS_NAME, str(len(names)))
         if keep and keep in names:
             self.sel = names.index(keep)
         self.sel = max(0, min(self.sel, len(names) - 1))
@@ -590,18 +672,26 @@ class RecordMode(Mode):
     def draw(self, screen):
         app = self.app
         app.bg.draw(screen)
+        app.header.draw(screen)
+        self.panel.draw(screen)
 
+        # the timer is always there, so the top of the panel isn't a hole;
+        # the blinking dot next to it only while a take is running
         if self.recorder.recording:
             if self._blink < 18:
-                pygame.draw.circle(screen, (240, 40, 40), (478, 189), 8)
+                pygame.draw.circle(screen, (240, 40, 40), (54, 92), 10)
+            self.lbl_timer.set_color((255, 120, 120))
             self.lbl_timer.set_text("{0:5.1f}s".format(self.recorder.duration))
-            self.lbl_timer.draw(screen)
+        else:
+            self.lbl_timer.set_color((110, 115, 115))
+            self.lbl_timer.set_text("  0.0s")
+        self.lbl_timer.draw(screen)
 
         self.meter.draw(screen)
 
         bad = "ERROR" in self.status or "FAIL" in self.status or "MIC:" in self.status
         self.lbl_status.set_color((255, 120, 120) if bad else (120, 255, 140))
-        self.lbl_status.set_text(self.status[:46])
+        self.lbl_status.set_text(self.status[:42])
         self.lbl_status.draw(screen)
 
         self._draw_takes(screen)
@@ -635,8 +725,8 @@ class RecordMode(Mode):
                 continue
             name = os.path.splitext(self.takes[index])[0]
             picked = index == self.sel
-            row.set_text("{0} {1}".format(">" if picked else " ", name[:30]))
-            row.set_color((255, 240, 140) if picked else (150, 150, 110))
+            row.set_text("{0} {1}".format(">" if picked else " ", name[:28]))
+            row.set_color(GB_BRIGHT if picked else (150, 150, 150))
             row.draw(screen)
 
 
@@ -649,12 +739,14 @@ class Menu(Mode):
     closing it returns to that screen exactly as it was.
 
     An entry is (label, target): a Mode is switched to, anything else is
-    called. A called entry can ask for confirmation with ask().
+    called. A called entry can ask for confirmation with ask(). The label may
+    be a function instead of a string, for an entry that shows a setting
+    ("STYLE: BOXES") - it is asked for the current text on every draw.
     """
 
     WIDTH = 360
     ROW = 48
-    HIGHLIGHT = (230, 60, 60)
+    HIGHLIGHT = GB                  # the accent; red stays for warnings
 
     def __init__(self, app, entries):
         Mode.__init__(self, app)
@@ -671,8 +763,10 @@ class Menu(Mode):
         self.overlay.set_alpha(170)
         self.overlay.fill((0, 0, 0))
 
-        self.title = Text("MENU", (x + 24, y + 20), 44, Color('white'), None)
-        self.rows = [Text(label, (x + 48, y + 88 + i * self.ROW), 38, Color('white'), None)
+        self.title = Text("MENU", (x + 24, y + 20), 44, Color('white'), None, bold=True)
+        self.rows = [Text(label() if callable(label) else label,
+                          (x + 48, y + 88 + i * self.ROW), 38,
+                          Color('white'), None, bold=True)
                      for i, (label, _) in enumerate(entries)]
         self.hint = Text("A / START open     B close", (x + 24, y + h - 38), 24,
                          (180, 180, 180), None)
@@ -744,12 +838,15 @@ class Menu(Mode):
         self.title.draw(screen)
 
         for i, row in enumerate(self.rows):
+            label = self.entries[i][0]
+            if callable(label):
+                row.set_text(label())
             picked = i == self.sel
             if picked:
                 bar = pygame.Rect(self.rect.x + 16, row.rect.y - 8,
                                   self.WIDTH - 32, self.ROW - 6)
                 pygame.draw.rect(screen, self.HIGHLIGHT, bar)
-            row.set_color(Color('white') if picked else (150, 150, 150))
+            row.set_color(GB_TEXT if picked else (160, 160, 160))
             row.draw(screen)
 
         self.hint.draw(screen)

@@ -38,9 +38,65 @@ left it.
 | Playback | play samples from your library |
 | Pitch | play the sample you last triggered as a scale |
 | Record | record new samples with a USB mic |
+| Style | switch the six slots between **boxes** and **list** |
+| Title | show the title screen until you press a button |
 | Exit | quit Samplemania - asks first, confirm with **A** (START never confirms, so it can't quit by accident) |
 
 The menu can't be opened while a recording is running - stop it first.
+
+### Title screen
+
+Samplemania opens with its title screen for three seconds - logo, name, and
+the line pattern drawn live: the lines drift, a bright band runs along them
+and the whole fan swells, all at speeds that do not divide into each other, so
+it never settles into a loop. Any button skips it and goes
+straight to playback. `SPLASH_SECONDS = 0` in `lib/config.py` turns it off,
+and the menu's **Title** entry brings it back any time; it then stays up until
+you press a button and returns to the screen you came from.
+
+### The screen
+
+Almost the whole screen belongs to the six sample names, because that is what
+you read on stage. They sit in the same arrangement as the buttons - **Z Y X**
+on top, **C B A** below, the right hand columns stepped up the way the pad is -
+so the tile you are reading is where your thumb already is. Each name is
+rendered as large as it fits in its tile. Sample names rarely have spaces in
+them, so a line may also end at a capital letter or a number inside a word:
+`01BigFatKick` reads as **Big Fat Kick** over three lines. The two digits in
+front of the name are the slot in the preset - they sit in the top right
+corner of the tile, out of the name's way, with the button letter opposite
+them.
+
+There are no drawn buttons any more: **pressing a button lights its tile**.
+A slot that is still sounding after you let go keeps a breathing outline, so
+you can see at a glance what is running. That follows the sample, not the
+button: page on while something plays and the slot goes dark, because it now
+holds a different sample - page back and it lights up again, as long as it is
+still running. A small amber dot in the
+corner means that sample is not in memory yet - the loader is still reading it.
+
+There are two styles, switched in the menu under **Style** and kept until you
+change it back (`UI_STYLE` in `lib/config.py` sets which one you start with):
+
+- **list** (the default) - six wide rows, one line each, the way the app
+  looked before. Best for long names, and easy to read straight down.
+- **boxes** - six panels in the shape of the pad, names wrapped over up to
+  three lines. The biggest type, and you find a sample by where it sits.
+
+The face, the current screen and the preset (with its page number) are in one
+shallow strip along the top, kept clear of both corners because the PiBoy
+draws its own HUD (battery, wifi) over them. The name "Samplemania" is not
+repeated there - it has the title screen to itself, and the strip keeps the
+room for the preset. Everything is in the dark
+red-purple of the Game Boy's own buttons; a lit tile is that colour turned
+up. Behind it all the red and green line pattern drifts and shimmers; the
+panels are slightly see-through, so it shows through them.
+
+The animation is pre-rendered at startup and costs one blit per frame. If you
+ever want it still, set `UI_ANIM_FPS = 0` in `lib/config.py` - the screen is
+then only drawn when something changes, which is the cheapest the app can be.
+`SHOW_DEBUG_PADS = True` brings the old button and d-pad pictures back in the
+corner, which is useful to check whether a button on the device arrives at all.
 
 ### Playback controls
 
@@ -69,9 +125,11 @@ plays the sample faster and therefore shorter.
 
 The scales are chromatic (all half tones), major, minor, dorian, mixolydian,
 major and minor pentatonic, blues, whole tone and octave - the last one jumps
-a full octave per button, so the six buttons span five octaves. The labels show each
-button's distance in half tones from the original sample, so `+0 +2 +4 +5 +7
-+9` is a major scale on the sample's own pitch.
+a full octave per button, so the six buttons span five octaves. The tiles show
+the note of each button, counting the sample itself as C4, with its distance in
+half tones from the original underneath - so `+0 +2 +4 +5 +7 +9` is a major
+scale on the sample's own pitch. The scale is in the chip at the top, the
+sample being pitched next to it.
 
 Like on the play screen, a new note cuts off the one before it. The button
 of the note that is sounding stays pressed while you hear it - it pops out
@@ -91,6 +149,8 @@ each note then takes a moment.
     Samplemania.py      launcher - the only file EmulationStation needs to list
     lib/                the app and its modules
       app.py            the application itself
+      PiBoyUI.py        the widgets: background, header, sample tiles
+      modes.py          the screens (play, pitch, record) and the menu
       pitch.py          scales and the pitched copies for pitch mode
       config.py         paths, recording format, loudness and mic settings
       check_audio.py    diagnostic tool for the recording setup
